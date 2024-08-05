@@ -10,6 +10,86 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 
+class BijectorLayer(tf.keras.layers.Layer):
+    """Wraps a TFP or home-grown bijector class as a Keras layer in order to
+    get built-in benefits like outputting layer info into model.summary().
+    (Experimental - not sure using this class is going to work...)
+    """
+    def __init__(self, bijector, **kwargs):
+        super(BijectorLayer, self).__init__(**kwargs)
+        self.bijector = bijector
+
+    def call(self, inputs, **kwargs):
+        return self.bijector.forward(inputs)
+
+    def inverse(self, inputs, **kwargs):
+        return self.bijector.inverse(inputs)
+
+
+class ActNorm(tfp.bijectors.Bijector):
+    """An activation normalization layer to use after the coupling layers
+    (from RealNVP), to try to emulate Glow model architecture.
+    """
+    def __init__(self, image_shape, validate_args=False, name="ActNorm", **kwargs):
+        super().__init__(forward_min_event_ndims=1, validate_args=validate_args, name=name, **kwargs)
+        self.image_shape = image_shape
+        num_channels = image_shape[-1]
+        self.log_scale = tf.Variable(tf.zeros(num_channels), name="log_scale")
+        self.bias = tf.Variable(tf.zeros(num_channels), name="bias")
+
+    @tf.function
+    def _forward(self, x):
+        x = tf.reshape(x, [-1] + list(self.image_shape))
+        y = tf.nn.bias_add(x * tf.exp(self.log_scale), self.bias)
+        return tf.reshape(y, [-1, self.image_shape[0] * self.image_shape[1] * self.image_shape[2]])
+
+    @tf.function
+    def _inverse(self, y):
+        y = tf.reshape(y, [-1] + list(self.image_shape))
+        x = (y - self.bias) * tf.exp(-self.log_scale)
+        return tf.reshape(x, [-1, self.image_shape[0] * self.image_shape[1] * self.image_shape[2]])
+
+    @tf.function
+    def _forward_log_det_jacobian(self, x):
+        # return tf.reduce_sum(self.log_scale) * tf.reduce_prod(tf.shape(x)[1:3])
+        return tf.reduce_sum(self.log_scale) * tf.cast(tf.reduce_prod(tf.shape(x)[1:3]), tf.float32)
+
+    @tf.function
+    def _inverse_log_det_jacobian(self, y):
+        return -self._forward_log_det_jacobian(y)
+
+
+class Invertible1x1Conv(tfp.bijectors.Bijector):
+    """An invertible 1x1 convolutional layer to use after the coupling layers
+    (from RealNVP), to try to emulate Glow model architecture.
+    """
+    def __init__(self, image_shape, validate_args=False, name="Invertible1x1Conv", **kwargs):
+        super().__init__(forward_min_event_ndims=1, inverse_min_event_ndims=1, validate_args=validate_args, name=name, **kwargs)
+        self.image_shape = image_shape
+        num_channels = image_shape[-1]
+        w_init = tf.linalg.qr(tf.random.normal([num_channels, num_channels]))[0]
+        self.w = tf.Variable(w_init)
+
+    @tf.function
+    def _forward(self, x):
+        x = tf.reshape(x, [-1] + list(self.image_shape))  # Reshape flattened input to image format
+        w_matrix = tf.reshape(self.w, [1, 1] + self.w.shape.as_list())
+        y = tf.nn.conv2d(x, w_matrix, strides=[1, 1, 1, 1], padding='SAME')
+        return tf.reshape(y, [-1, self.image_shape[0] * self.image_shape[1] * self.image_shape[2]])  # Flatten back
+
+    @tf.function
+    def _inverse(self, y):
+        y = tf.reshape(y, [-1] + list(self.image_shape))  # Reshape flattened input to image format
+        w_inv = tf.linalg.inv(self.w)
+        w_matrix_inv = tf.reshape(w_inv, [1, 1] + w_inv.shape.as_list())
+        x = tf.nn.conv2d(y, w_matrix_inv, strides=[1, 1, 1, 1], padding='SAME')
+        return tf.reshape(x, [-1, self.image_shape[0] * self.image_shape[1] * self.image_shape[2]])  # Flatten back
+
+    @tf.function
+    def _forward_log_det_jacobian(self, x):
+        return tf.math.log(tf.abs(tf.linalg.det(self.w))) * self.image_shape[0] * self.image_shape[1]
+
+
 class FlowModel(tf.keras.Model):
     """
     code generally follows Tensorflow documentation at:
@@ -54,34 +134,52 @@ class FlowModel(tf.keras.Model):
         """
 
         super().__init__()
+        self.conv_layers_list = []
         self.image_shape = image_shape
         flat_image_size = np.prod(image_shape)  # flattened size
+
+        # Defining the CNN layers used in _shift_and_log_scale_conv, which can
+        # only be defined once but get called on every training iteration
+        # self.conv1 = tf.keras.layers.Conv2D(64, (3, 3), padding='same', activation='relu')
+        # self.conv2 = tf.keras.layers.Conv2D(32, (3, 3), padding='same', activation='relu')
+        # self.conv3 = tf.keras.layers.Conv2D(flat_image_size, (3, 3), padding='same')
 
         layer_name = "flow_step"
         flow_step_list = []
         for i in range(flow_steps):
             flow_step_list.append(
-                tfp.bijectors.BatchNormalization(
+                ActNorm(
+                    image_shape=self.image_shape,
                     validate_args=validate_args,
-                    name="{}_{}/batchnorm".format(layer_name, i),
+                    name="{}_{}/actnorm".format(layer_name, i),
                 )
+                # tfp.bijectors.BatchNormalization(
+                #     validate_args=validate_args,
+                #     name="{}_{}/batchnorm".format(layer_name, i),
+                # )
             )
             flow_step_list.append(
-                tfp.bijectors.Permute(
-                    # permutation=list(reversed(range(flat_image_size))),
-                    permutation=list(np.random.permutation(flat_image_size)),
+                Invertible1x1Conv(
+                    image_shape=self.image_shape,
                     validate_args=validate_args,
-                    name="{}_{}/permute".format(layer_name, i),
+                    name="{}_{}/invertible1x1Conv".format(layer_name, i),
                 )
+                # tfp.bijectors.Permute(
+                #     # permutation=list(reversed(range(flat_image_size))),
+                #     permutation=list(np.random.permutation(flat_image_size)),
+                #     validate_args=validate_args,
+                #     name="{}_{}/permute".format(layer_name, i),
+                # )
             )
             flow_step_list.append(
                 tfp.bijectors.RealNVP(
                     num_masked=flat_image_size // 2,
-                    shift_and_log_scale_fn=tfp.bijectors.real_nvp_default_template(
-                        hidden_layers=hidden_layers,
-                        kernel_initializer=tf.keras.initializers.GlorotUniform(),
-                        kernel_regularizer=tf.keras.regularizers.l2(reg_level)
-                    ),
+                    shift_and_log_scale_fn=self._shift_and_log_scale_conv,
+                    # shift_and_log_scale_fn=tfp.bijectors.real_nvp_default_template(
+                    #     hidden_layers=hidden_layers,
+                    #     kernel_initializer=tf.keras.initializers.GlorotUniform(),
+                    #     kernel_regularizer=tf.keras.regularizers.l2(reg_level)
+                    # ),
                     validate_args=validate_args,
                     name="{}_{}/realnvp".format(layer_name, i),
                 )
@@ -130,3 +228,39 @@ class FlowModel(tf.keras.Model):
         bits_per_dim_divisor = (np.prod(self.image_shape) * tf.math.log(2.0))
         bpd = neg_log_likelihood / bits_per_dim_divisor
         return {"neg_log_likelihood": neg_log_likelihood, "bits_per_dim": bpd}
+
+    def make_conv_layers(self, output_units):
+        # This method dynamically creates new layers with their own weights
+        self.conv_layers_list.append([
+            tf.keras.layers.Conv2D(64, (3, 3), padding='same', activation='relu'),
+            tf.keras.layers.Conv2D(32, (3, 3), padding='same', activation='relu'),
+            tf.keras.layers.Conv2D(2 * output_units, (3, 3), padding='same')
+        ])
+        return self.conv_layers_list[-1]
+
+    def _shift_and_log_scale_conv(self, x, output_units):
+        # Assuming 'x' is flattened and we know the desired image shape is self.image_shape
+        print(f"_shift_and_log_scale_conv: output_units={output_units}")
+        image_shape = self.image_shape
+        print("Original shape:", x.shape)
+        x = tf.reshape(x, [-1, *image_shape])
+        print("Reshaped to image shape:", x.shape)
+        layers = self.make_conv_layers(output_units)
+        for layer in layers:
+            x = layer(x)
+        # x = layers['conv1'](x)
+        # x = layers['conv2'](x)
+        # x = layers['conv3'](x)
+        # x = self.conv1(x)
+        # x = self.conv2(x)
+        # x = self.conv3(x)
+        # x = tf.keras.layers.Conv2D(64, (3, 3), padding='same', activation='relu')(x)
+        # x = tf.keras.layers.Conv2D(32, (3, 3), padding='same', activation='relu')(x)
+        # x = tf.keras.layers.Conv2D(2 * output_units, (3, 3), padding='same')(x)
+        shift, log_scale = tf.split(x, num_or_size_splits=2, axis=-1)  # axis=-1 is the channels dim
+        print("Shift shape:", shift.shape, "Log scale shape:", log_scale.shape)
+        # Flatten back before returning
+        shift = tf.reshape(shift, [-1, image_shape[0] * image_shape[1] * image_shape[2] // 2])
+        log_scale = tf.reshape(log_scale, [-1, image_shape[0] * image_shape[1] * image_shape[2] // 2])
+        print("After reshape:  Shift shape:", shift.shape, "Log scale shape:", log_scale.shape)
+        return shift, log_scale

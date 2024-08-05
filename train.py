@@ -20,24 +20,24 @@ warnings.filterwarnings("ignore", category=UserWarning)  # TFP spews a number of
 
 ### Run params: ###
 output_dir = "output"
-model_dir = "models/cat_models/cats_256x256new"
+model_dir = "models/cat_models/cats_128x128new"
 do_train = True  # true = training, false = inference w existing model in model_dir
 use_tensorboard = True
 do_imgs_and_points = True  # generate scatterplots, sim images, etc:  not dataset specific
 do_interp = False  # interp sim images between some training points:  cat dataset specific
 ### Training params: ###
-num_epochs = 10
-batch_size = 128
+num_epochs = 30
+batch_size = 64
 reg_level = 0  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-learning_rate = 0.00001  # scaler -> constant rate; list-of-3 -> exponential decay
+learning_rate = 0.0001  # scaler -> constant rate; list-of-3 -> exponential decay
 # learning_rate = [0.001, 500, 0.95]  # [initial_rate, decay_steps, decay_rate]
-early_stopping_patience = 0  # value <=0 turns off early_stopping
+early_stopping_patience = 5  # value <=0 turns off early_stopping
 num_image_files = 5600  # num training images (todo: auto-find from directory)
-augmentation_factor = 2  # set >1 to have augmentation turned on
+augmentation_factor = 4  # set >1 to have augmentation turned on
 steps_per_epoch = num_image_files // batch_size * augmentation_factor
 num_gen_images = 10  # number of new images to generate
 ### Model architecture params: ###
-image_shape = (256, 256, 3)  # (height, width, channels) of images
+image_shape = (128, 128, 3)  # (height, width, channels) of images
 hidden_layers = [512, 512]  # nodes per layer within affine coupling layers
 flow_steps = 6  # number of affine coupling layers
 validate_args = True
