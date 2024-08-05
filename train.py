@@ -2,12 +2,12 @@ from datetime import datetime
 import warnings
 
 from tensorflow.keras.callbacks import EarlyStopping
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.optimizers.schedules import ExponentialDecay
 from tensorflow.python.keras.callbacks import TensorBoard
 
 from flow_model import FlowModel
+from file_utils import S3ImageDataGenerator
 import utils
 
 warnings.filterwarnings("ignore", category=UserWarning)  # TFP spews a number of these
@@ -53,24 +53,24 @@ utils.print_run_params(
 )
 
 
-datagen = ImageDataGenerator(
+datagen = S3ImageDataGenerator(
     rescale=1.0 / 255,
     horizontal_flip=True,
     zoom_range=0.1,
-    shear_range=0.1,
+    shear_range=0.0,  # 0.1,  # still debugging this feature
     rotation_range=10,
-    width_shift_range=0.1,
-    height_shift_range=0.1,
+    width_shift_range=0.0,  # 0.1,  # still debugging this feature
+    height_shift_range=0.0,  # 0.1,  # still debugging this feature
 )
 train_generator = datagen.flow_from_directory(
-    "data/train",
+    "s3://mybucket/train",
     target_size=image_shape[:2],  # images get resized to this size
     batch_size=batch_size,
     class_mode=None,  # unsupervised learning so no class labels
     shuffle=False,  # possibly helpful for training but pain for plot revamps/additions
 )
 other_generator = datagen.flow_from_directory(
-    "data/anom",
+    "s3://mybucket/val",
     target_size=image_shape[:2],  # images get resized to this size
     batch_size=batch_size,
     class_mode=None,  # unsupervised learning so no class labels

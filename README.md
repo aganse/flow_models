@@ -1,10 +1,11 @@
 # flow_models
-Flow-based invertible neural networks implemented with Keras, Tensorflow, and Tensorflow Probability.
+Flow-based invertible neural networks implemented with Keras, Tensorflow, and
+Tensorflow Probability.
 
-Work currently still in progress, but things are functional meanwhile per instructions below.
-This code is what I used to produce the materials in 
-["Sim-cats! Image generation and unsupervised learning for anomaly detection as two sides of the same coin"]
-(http://research.ganse.org/datasci/sim-cats)
+Work currently still in progress, but things are functional meanwhile per
+instructions below.  This code is what I used to produce the materials in 
+["Sim-cats! Image generation and unsupervised learning for anomaly detection as
+  two sides of the same coin"](http://research.ganse.org/datasci/sim-cats)
 
 
 ### A. To install/prepare
@@ -13,22 +14,27 @@ This code is what I used to produce the materials in
    [these instructions](https://github.com/aganse/py_tf2_gpu_dock_mlflow/blob/main/doc/aws_ec2_install.md)
    from my [py_tf2_gpu_dock_mlflow](https://github.com/aganse/py_tf2_gpu_dock_mlflow)
    repository to set that up.
-   I'm also working on some scripts to kick off the training remotely in a Docker
-   container via AWS ECR using AWS Batch, but that's not ready yet.  Meanwhile,
-   simply installing on the GPU-enabled instance per those instructions allows
-   to run the training on there.
+
+   I'm also working on some scripts to kick off the training remotely in a
+   Docker container via AWS ECR using AWS Batch (that's what's in subdir
+   `awsbatch-support`), but that's not ready yet.  Meanwhile, simply installing
+   on the GPU-enabled instance per those instructions linked above allows to
+   run the training on there.
 
 2. Create the python environment and install dependencies:
     ```
-    # within the flow_models directory:
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
+    > make create-env
+    Creating/installing new python env /home/ubuntu/src/python/flow_models/.venv3
     ```
+    (this is just a convenience macro to run the usual `python3 -m venv .venv &&
+    source .venv/bin/activate && pip install -r requirements.txt`.  except note
+    this macro creates new .venvN subdirectories incrementing N to avoid
+    overwriting existing env subdirectories.)
 
-3. Get images to work with.  Two main options for this:
+3. Get images to train/test with:
 
-    a. Download a relevant Kaggle dataset.  E.g. I thought this
+    Of course you can use whatever images you want.  For experimentation I
+    recommend downloading a relevant Kaggle dataset.  E.g. I thought the
     [animal-faces](https://www.kaggle.com/datasets/andrewmvd/animal-faces) one
     was especially good, focusing on just the cats.  Other Kaggle datasets I
     may try in near future include:
@@ -38,33 +44,28 @@ This code is what I used to produce the materials in
     * [Fresh and Rotten Classification](https://www.kaggle.com/datasets/swoyam2609/fresh-and-stale-classification)
     * [Flower Classification 10 Classes](https://www.kaggle.com/datasets/utkarshsaxenadn/flower-classification-5-classes-roselilyetc)
 
+    If using a dedicated GPU-enabled instance, you could save these directly on
+    that instance in a `data` subdir within the `flow_models` repo directory.
+    For that case the URIs for train_generator and other_generator in train.py
+    can simply be `"data/train"` for example.  Or you can use image files in an
+    S3 bucket, whether in the dedicated GPU-enabled instance or soon within
+    AWS Batch configuration.  For that case the URIs should have the form
+    `"s3://mybucket/myprefix/train"`.
 
-    b. Download images into the appropriate directories:
+    This is not supervised learning so labels are not used for training, but
+    it can still be useful to reserve some validation data to experiment with
+    after training anyway.  Whether locally or in S3, I find the following
+    directory structure helpful.  Note the data generator reading the files
+    will combine all subdirectories of files together, so `cat` and `beachball`
+    images will be mixed together in the validation dataset:
 
-    `python download_images_bing.py`
-    This will create the following directory structure to hold the downloaded images.
-    (The "cat" subdirectory is because the search keyword was "cat" - you can of
-    course change that, and the unsupervised learning doesn't care what the subdirs
-    are within "train" and "val" anway, it just globs them together.)
-    None of these directories needs to exist already - the script can create them.
-
-    Warning - I did find a lot of web-scraping packages don't seem to work anymore
-    (search engine APIs seem to evolve quickly/regularly).  The Bing one
-    technically still works but does not provide very good/reliable cat photos.
-    Honestly this is what made me shift to using pre-made image datasets myself;
-    really the quality/consistency is better too.
-
-    After first getting things working with just cats, the idea is to add another
-    "val" directory with not only a bunch of cats, but also a new subdir of say
-    "beachball" with only a few images, and see if those show up as outliers in the
-    multivariate Gaussian distribution when mapped through the model.
     ```
     data/
         train/
             cat/
         val/
-            cat/
-            beachball/
+            beachball/   <-- these generally show up as outliers in gaussian latent points
+            cat/         <-- these generally don't
     ```
 
 ### B. To run the training
@@ -72,4 +73,5 @@ This code is what I used to produce the materials in
 2. Set environment variable `export TF_CPP_MIN_LOG_LEVEL=2` to squelch a number of status/info lines spewed by Tensorflow and Tensorflow
     Probability (TFP) that I don't find too helpful and that make a mess in the console output.  (Similarly note I've put a python line
     at the top of train.py to squelch `UserWarning`s that are spewed by TFP.)
-3. Run `python train.py`.
+3. Set desired parameters in `train.py`.
+4. Run `python train.py`.

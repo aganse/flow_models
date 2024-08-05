@@ -15,7 +15,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Set the default TensorFlow mode (cpu vs gpu) to install
 ARG TENSORFLOW_PKG=tensorflow-cpu==2.12.0
-# Install TensorFlow based on the build argument
+# Install TensorFlow based on the build argument (which will overide the above if present)
 RUN pip3 install ${TENSORFLOW_PKG}
 
 COPY *.py /app/

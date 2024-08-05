@@ -1,0 +1,17 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - $(aws ecr get-login --no-include-email --region $AWS_REGION)
+      - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+  build:
+    commands:
+      - echo "imagestring - ECR_REPO_URI,IMAGE_TAG,DEVICE - ${ECR_REPO_URI},${IMAGE_TAG},${DEVICE}"
+      - docker info | head -26
+      - docker ps
+      - docker build --build-arg TENSORFLOW_PKG=tensorflow==2.12.0 -t ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} .
+      - docker tag ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} ${ECR_REPO_URI}:latest
+  post_build:
+    commands:
+      - docker push ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE}
+      - docker push ${ECR_REPO_URI}:latest

@@ -1,0 +1,37 @@
+{
+  "jobDefinitionName": "${JOB_DEF_NAME}",
+  "type": "container",
+  "retryStrategy": {
+    "attempts": 1
+  },
+  "timeout": {
+    "attemptDurationSeconds": 3600
+  },
+  "containerProperties": {
+    "vcpus": 3,
+    "memory": 14000,
+    "resourceRequirements": [
+      {
+        "type": "GPU",
+        "value": "1"
+      }
+    ],
+    "environment": [
+      {
+        "name": "AWS_DEFAULT_REGION",
+        "value": "${AWS_REGION}"
+      }
+    ],
+    "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/batch/job",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "test-debug"
+        }
+    },
+    "executionRoleArn": "arn:aws:iam::${AWS_ACCT_ID}:role/BatchExecutionRole",
+    "image": "${ECR_REPO_URI}:latest",
+    "command": ["python3", "testing.py"]
+  }
+}
