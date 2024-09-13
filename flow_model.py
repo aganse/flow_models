@@ -25,11 +25,11 @@ class FlowModel(tf.keras.Model):
 
     def __init__(
         self,
-        image_shape,
+        image_shape=(256, 256, 3),
         hidden_layers=[256, 256],
         flow_steps=4,
-        reg_level=0.01,
         validate_args=False,
+        reg_level=0.01,
     ):
         """RealNVP-based flow architecture, using TFP as much as possible so the
         architectures don't *exactly* match the papers but are pretty close.
