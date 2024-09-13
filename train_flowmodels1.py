@@ -1,6 +1,9 @@
 import warnings
 from datetime import datetime
 
+import numpy as np
+from sklearn import datasets
+from sklearn.mixture import GaussianMixture
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.optimizers.schedules import ExponentialDecay
@@ -25,6 +28,7 @@ run_params = {
     "model_dir": "models/flowmodels1",
     "do_train": True,  # true = training, false = inference w existing model in model_dir
     "use_tensorboard": True,
+    "data": "moons",  # "moons" or "GMM"
 }
 training_params = {
     "num_epochs": 10,
@@ -46,29 +50,26 @@ model_arch_params = {
 utils.print_run_params(**run_params, **training_params, **model_arch_params)
 
 
-# datagen = ImageDataGenerator(  # images in local filesystem
-# datagen = S3ImageDataGenerator(  # images in S3 bucket
-#     rescale=1.0 / 255,
-#     horizontal_flip=True,
-#     zoom_range=0.1,
-#     shear_range=0.0,  # 0.1,  # still debugging this feature for S3ImageDG
-#     rotation_range=10,
-#     width_shift_range=0.0,  # 0.1,  # still debugging this feature for S3ImageDG
-#     height_shift_range=0.0,  # 0.1,  # still debugging this feature for S3ImageDG
-# )
-# train_generator = datagen.flow_from_directory(
-#     "s3://mybucket/train",
-#     target_size=model_arch_params["image_shape"][:2],  # images get resized to this size
-#     batch_size=training_params["batch_size"],
-#     class_mode=None,  # unsupervised learning so no class labels
-#     shuffle=False,  # possibly helpful for training but pain for plot revamps/additions
-# )
-# other_generator = datagen.flow_from_directory(
-#     "s3://mybucket/val",
-#     target_size=model_arch_params["image_shape"][:2],  # images get resized to this size
-#     batch_size=training_params["batch_size"],
-#     class_mode=None,  # unsupervised learning so no class labels
-# )
+if run_params["data"] == "moons":
+    def train_generator(batch_size, noise=0.1):
+        while True:
+            X, _ = datasets.make_moons(n_samples=batch_size, noise=noise)
+            yield X.astype(np.float32)
+
+elif run_params["data"] == "GMM":
+    def train_generator(batch_size, means, covariances, weights):
+        gmm = GaussianMixture(n_components=len(means))
+        gmm.weights_ = np.array(weights)
+        gmm.means_ = np.array(means)
+        gmm.covariances_ = np.array(covariances)
+        gmm.precisions_cholesky_ = np.linalg.cholesky(np.linalg.inv(gmm.covariances_))
+
+        while True:
+            X, _ = gmm.sample(batch_size)
+            yield X.astype(np.float32)
+
+else:
+    print("Error: invalid run_params['data'] which should be 'moons' or 'GMM'.")
 
 
 flow_model = FlowModel(**model_arch_params, reg_level=training_params["reg_level"])
