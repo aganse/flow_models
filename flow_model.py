@@ -5,9 +5,16 @@ flow_model.compile(optimizer=tf.optimizers.Adam(learning_rate=0.0001), metrics=[
 flow_model.fit(train_data_generator, epochs=num_epochs, steps_per_epoch=steps_per_epoch)
 """
 
+from datetime import datetime
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers.schedules import ExponentialDecay
+from tensorflow.python.keras.callbacks import TensorBoard
+
+from file_utils import infinite_generator
 
 
 class FlowModel(tf.keras.Model):
@@ -75,7 +82,7 @@ class FlowModel(tf.keras.Model):
             flow_step_list.append(
                 tfp.bijectors.BatchNormalization(
                     validate_args=validate_args,
-                    name="{}_{}/batchnorm".format(layer_name, i),
+                    name="{}_{}_batchnorm".format(layer_name, i),
                 )
             )
             flow_step_list.append(
@@ -83,7 +90,7 @@ class FlowModel(tf.keras.Model):
                     # permutation=list(reversed(range(flat_image_size))),
                     permutation=list(np.random.permutation(flat_image_size)),
                     validate_args=validate_args,
-                    name="{}_{}/permute".format(layer_name, i),
+                    name="{}_{}_permute".format(layer_name, i),
                 )
             )
             flow_step_list.append(
@@ -95,14 +102,17 @@ class FlowModel(tf.keras.Model):
                         kernel_regularizer=tf.keras.regularizers.l2(reg_level),
                     ),
                     validate_args=validate_args,
-                    name="{}_{}/realnvp".format(layer_name, i),
+                    name="{}_{}_realnvp".format(layer_name, i),
                 )
             )
         flow_step_list = list(flow_step_list[1:])  # leave off last permute
         self.flow_bijector = tfp.bijectors.Chain(
             flow_step_list, validate_args=validate_args, name=layer_name
         )
-        print("flow_step_list:", flow_step_list)
+        print(
+            "flow_step_list (from input to output):",
+            reversed([layer.name for layer in flow_step_list]),
+        )
 
         base_distribution = tfp.distributions.MultivariateNormalDiag(
             loc=[0.0] * flat_image_size
@@ -156,3 +166,72 @@ class FlowModel(tf.keras.Model):
         bits_per_dim_divisor = np.prod(self.image_shape) * tf.math.log(2.0)
         bpd = neg_log_likelihood / bits_per_dim_divisor
         return {"neg_log_likelihood": neg_log_likelihood, "bits_per_dim": bpd}
+
+
+def default_training_sequence(
+    train_gen, run_params, training_params, model_arch_params
+):
+    """A prefab training configuration for flow_models, just to speed/ease getting going."""
+
+    flow_model = FlowModel(**model_arch_params, reg_level=training_params["reg_level"])
+    print("")
+    # Model.build() is only necessary when calling .summary() before train:
+    flow_model.build(input_shape=(None, *model_arch_params["image_shape"]))
+    print(
+        "Still working on why model layer specs not outputting to model summary below..."
+    )
+    flow_model.summary()
+
+    if run_params["do_train"]:
+        print("Training model...", flush=True)
+
+        if isinstance(training_params["learning_rate"], float):
+            lrate = training_params["learning_rate"]
+        elif (
+            isinstance(training_params["learning_rate"], list)
+            and len(training_params["learning_rate"]) == 3
+        ):
+            lrate = ExponentialDecay(
+                training_params["learning_rate"][0],
+                decay_steps=training_params["learning_rate"][1],
+                decay_rate=training_params["learning_rate"][2],
+                staircase=True,
+            )
+        else:
+            print("train.py: error: learning_rate not scalar or list of length 3.")
+            quit()
+
+        callbacks = []
+        if training_params["early_stopping_patience"] > 0:
+            callbacks.append(
+                EarlyStopping(
+                    monitor="neg_log_likelihood",
+                    patience=training_params["early_stopping_patience"],
+                    restore_best_weights=True,
+                )
+            )
+        if run_params["use_tensorboard"]:
+            log_dir = f"./logs/train/{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+            callbacks.append(
+                TensorBoard(log_dir=log_dir, histogram_freq=1, write_graph=False)
+            )
+        flow_model.compile(optimizer=Adam(learning_rate=lrate))
+        infinite_train_generator = infinite_generator(train_gen)
+        flow_model.fit(
+            infinite_train_generator,
+            epochs=training_params["num_epochs"],
+            steps_per_epoch=training_params["num_data_input"]
+            // training_params["batch_size"]
+            * training_params["augmentation_factor"],
+            callbacks=callbacks,
+        )
+        print("Done training model.", flush=True)
+        flow_model.save_weights(run_params["model_dir"] + "/model_weights")
+        print("Model weights saved to file.", flush=True)
+    else:
+        print(
+            f"Loading model weights from file in {run_params['model_dir']}.", flush=True
+        )
+        flow_model.load_weights(run_params["model_dir"] + "/model_weights")
+
+    return flow_model

@@ -26,11 +26,17 @@ def imgs_to_gaussian_pts(model, image_generator, N, neigvals=100, p_outliers=10)
     """
 
     # Just making sure neigvals set correctly wrt number of samples:
-    if neigvals > N:
-        if N <= 100:
-            neigvals = N
-        else:
-            neigvals = 100
+    # if neigvals > N:
+    #     if N <= 100:
+    #         neigvals = N
+    #     else:
+    #         neigvals = 100
+    # M = np.prod(model.input_shape[1:])
+
+    M = np.prod(next(image_generator).shape[1:])
+    neigvals = min(M, N, 100)
+
+    # print("imgs_to_gaussian_pts: M=", M, ", N=", N)
 
     def get_n_images(data_generator, n):
         images = []
@@ -72,8 +78,8 @@ def imgs_to_gaussian_pts(model, image_generator, N, neigvals=100, p_outliers=10)
     return gaussian_points, mean_full, cov_reduced, pca, top_outliers, closest_to_mean
 
 
-def plot_gaussian_pts_2d(
-    training_pts,
+def plot_pts_2d(
+    train_pts,
     plotfile="compare_points_2d.png",
     mean=None,
     sim_pts=None,
@@ -84,27 +90,29 @@ def plot_gaussian_pts_2d(
 ):
     """Scatterplot of various categories of points in the Gaussian latent space."""
 
-    pca = PCA(n_components=2)
-
-    if sim_pts is not None and other_pts is not None:
-        # Combine and find pca of combo plus origin(mean)
-        pca_pts = pca.fit_transform(np.concatenate([sim_pts, other_pts, [mean]]))
-        sim_pts = pca.transform(sim_pts)
-        other_pts = pca.transform(other_pts)
-        train_pts = pca.transform(training_pts)
-    elif sim_pts is not None and other_pts is None:
-        # Find pca of sim_pts plus origin(mean)
-        pca_pts = pca.fit_transform(np.concatenate([sim_pts, [mean]]))
-        sim_pts = pca.transform(sim_pts)
-        train_pts = pca.transform(training_pts)
-    elif sim_pts is None and other_pts is not None:
-        # Find pca of other_pts plus origin(mean)
-        pca_pts = pca.fit_transform(np.concatenate([other_pts, [mean]]))
-        other_pts = pca.transform(other_pts)
-        train_pts = pca.transform(training_pts)
-    elif sim_pts is None and other_pts is None:
-        # Find pca of just the training pts samples
-        train_pts = pca.fit_transform(training_pts)
+    print("plot_pts_2d train_pts.shape:", train_pts.shape)
+    if train_pts.shape[1] > 2:
+        print("applying PCA to reduce dimensions to 2 to plot...")
+        pca = PCA(n_components=2)
+        if sim_pts is not None and other_pts is not None:
+            # Combine and find pca of combo plus origin(mean)
+            pca_pts = pca.fit_transform(np.concatenate([sim_pts, other_pts, [mean]]))
+            sim_pts = pca.transform(sim_pts)
+            other_pts = pca.transform(other_pts)
+            train_pts = pca.transform(train_pts)
+        elif sim_pts is not None and other_pts is None:
+            # Find pca of sim_pts plus origin(mean)
+            pca_pts = pca.fit_transform(np.concatenate([sim_pts, [mean]]))
+            sim_pts = pca.transform(sim_pts)
+            train_pts = pca.transform(train_pts)
+        elif sim_pts is None and other_pts is not None:
+            # Find pca of other_pts plus origin(mean)
+            pca_pts = pca.fit_transform(np.concatenate([other_pts, [mean]]))
+            other_pts = pca.transform(other_pts)
+            train_pts = pca.transform(train_pts)
+        elif sim_pts is None and other_pts is None:
+            # Find pca of just the training pts samples
+            train_pts = pca.fit_transform(train_pts)
 
     fig, ax = plt.subplots()
     ax.scatter(
@@ -310,6 +318,64 @@ def generate_imgs_in_batches(
     return samples_tf
 
 
+def generate_sim_pts(
+    model,
+    num_gen_images,
+    mean,
+    reduced_cov,
+    pca,
+    regen_pts=None,
+    batch_size=10,
+):
+    """Given latent space distribution params, and/or list of points to use
+    (regen_pts), map those through the model into images.
+
+    model: trained FlowModel object
+    num_gen_images: number of points to map (ie samples to generate from
+                    mean/reduced_cov or to draw from regen_pts)
+    The following 3 come out of imgs_to_gaussian_pts():
+      mean: numpy array of the full-dimensional vector mean point (ideally near 0)
+      reduced_cov: the cov matrix computed in the reduced space from pca
+      pca: the pca object from imgs_to_gaussian_pts()
+    filename: string that numbers appended to for filenames of generated images
+    batch_size: integer - note this is batches of generated images, not training data batches!
+    regen_pts: (optional) numpy array of training_pts for regenerating images for
+           first N of them, instead of generating random pts from mean & cov.
+           Technically doesn't have to be training_pts, could be any array of pts.
+    add_plot_num: boolean: add little orange id # at top left of output images
+        to match them up to the numbers in the scatterplots.
+    """
+
+    num_batches = (num_gen_images + batch_size - 1) // batch_size
+
+    mapped_pts = []
+    for batch_idx in range(num_batches):
+        # Determine the number of images to generate in this batch
+        current_batch_size = min(batch_size, num_gen_images - batch_idx * batch_size)
+
+        if regen_pts is None:
+            # Generate a batch of Gaussian samples using TensorFlow
+            samples_tf = generate_multivariate_normal_samples(
+                mean, reduced_cov, pca, current_batch_size
+            )
+        else:
+            # Get next batch worth of points from supplied training_points
+            regen_tf = tf.convert_to_tensor(regen_pts, dtype=tf.float32)
+            samples_tf = regen_tf[
+                (batch_idx * batch_size) : (batch_idx * batch_size + current_batch_size)
+            ]
+
+        for i in range(current_batch_size):
+            # Map back through the invertible network
+            generated_image = model.inverse(samples_tf[i : i + 1])
+            generated_image = tf.reshape(generated_image, model.image_shape)
+            mapped_pts.append(generated_image.numpy())
+
+    sim_pts = np.array(mapped_pts)
+
+    return sim_pts
+
+
 def add_text_to_image(image, text, font_size, color, bold):
     """Annotate little plot-number in corner of images.
     For use as a option in generate_imgs_in_batches().
@@ -390,19 +456,19 @@ def image_data_generator(filenames, target_size=(224, 224), batch_size=1):
     return generator
 
 
-def infinite_generator(generator):
-    """Ensures train_generator repeats indefinitely so can use augmentation.
-    (it isn't doing so without this - why not?)
+# def infinite_generator(generator):
+#     """Ensures train_generator repeats indefinitely so can use augmentation.
+#     (it isn't doing so without this - why not?)
 
-    Usage:
-    datagen = ImageDataGenerator(...)
-    train_generator = datagen.flow_from_directory(...)
-    infinite_train_generator = utils.infinite_generator(train_generator)
-    flow_model.fit(infinite_train_generator, epochs=num_epochs, ...)
-    """
-    while True:
-        for batch in generator:
-            yield batch
+#     Usage:
+#     datagen = ImageDataGenerator(...)
+#     train_generator = datagen.flow_from_directory(...)
+#     infinite_train_generator = utils.infinite_generator(train_generator)
+#     flow_model.fit(infinite_train_generator, epochs=num_epochs, ...)
+#     """
+#     while True:
+#         for batch in generator:
+#             yield batch
 
 
 def slerp(point1, point2, t):

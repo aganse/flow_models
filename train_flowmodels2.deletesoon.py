@@ -1,24 +1,33 @@
 import warnings
+from datetime import datetime
 
-# Can use this for local filesystem in place of S3ImageDataGenerator for s3:
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers.schedules import ExponentialDecay
+from tensorflow.python.keras.callbacks import TensorBoard
 # from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 import utils
 from file_utils import S3ImageDataGenerator
-from flow_model import default_training_sequence
+from flow_model import FlowModel
 
 
 warnings.filterwarnings("ignore", category=UserWarning)  # TFP spews a number of these
+
+# Useful stuff when debugging but annoying otherwise:
+# print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
+# Print out the device each operation is assigned to, helping identify if any
+# operations are unexpectedly running on the CPU. (caution: debug only: highly verbose!)
+# tf.debugging.set_log_device_placement(True)
 
 run_params = {
     "output_dir": "output",
     "model_dir": "models/flowmodels2/cats_256x256new",
     "do_train": True,  # true = training, false = inference w existing model in model_dir
     "use_tensorboard": True,
-    "data": "moons",  # "moons", "GMM", "cats", "catsdogs", "invkin", "glacgrav"
-    "num_gen_sims": 10,  # number of new simulated images to generate
     "do_imgs_and_points": True,  # generate scatterplots, sim images, etc:  not dataset specific
     "do_interp": False,  # interp sim images between some training points:  cat dataset specific
+    "num_gen_sims": 10,  # number of new simulated images to generate
 }
 training_params = {
     "num_epochs": 10,
@@ -27,7 +36,7 @@ training_params = {
     "learning_rate": 0.00001,  # scaler -> constant rate; list-of-3 -> exponential decay
     # "learning_rate": [0.001, 500, 0.95],  # [initial_rate, decay_steps, decay_rate]
     "early_stopping_patience": 0,  # value <=0 turns off early_stopping
-    "num_data_input": 5600,  # num training data pts or images (whether pts or files)
+    "num_data_input": 5600,  # num training data points or images (whether sim or files)
     "augmentation_factor": 2,  # set >1 to have augmentation turned on
 }
 model_arch_params = {
@@ -64,12 +73,64 @@ other_generator = datagen.flow_from_directory(
     class_mode=None,  # unsupervised learning so no class labels
 )
 
-print("train_generator test: shape of one batch: ", next(train_generator).shape, "\n")
+
+flow_model = FlowModel(**model_arch_params, reg_level=training_params["reg_level"])
+print("")
+# Model.build() is only necessary when calling .summary() before train:
+flow_model.build(input_shape=(None, *model_arch_params["image_shape"]))
+print("Still working on why model layer specs not outputting to model summary below...")
+flow_model.summary()
 
 
-flow_model = default_training_sequence(
-    train_generator, run_params, training_params, model_arch_params
-)
+if run_params["do_train"]:
+    print("Training model...", flush=True)
+
+    if isinstance(training_params["learning_rate"], float):
+        lrate = training_params["learning_rate"]
+    elif (
+        isinstance(training_params["learning_rate"], list)
+        and len(training_params["learning_rate"]) == 3
+    ):
+        lrate = ExponentialDecay(
+            training_params["learning_rate"][0],
+            decay_steps=training_params["learning_rate"][1],
+            decay_rate=training_params["learning_rate"][2],
+            staircase=True,
+        )
+    else:
+        print("train.py: error: learning_rate not scalar or list of length 3.")
+        quit()
+
+    callbacks = []
+    if training_params["early_stopping_patience"] > 0:
+        callbacks.append(
+            EarlyStopping(
+                monitor="neg_log_likelihood",
+                patience=training_params["early_stopping_patience"],
+                restore_best_weights=True,
+            )
+        )
+    if run_params["use_tensorboard"]:
+        log_dir = f"./logs/train/{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        callbacks.append(
+            TensorBoard(log_dir=log_dir, histogram_freq=1, write_graph=False)
+        )
+    flow_model.compile(optimizer=Adam(learning_rate=lrate))
+    infinite_train_generator = utils.infinite_generator(train_generator)
+    flow_model.fit(
+        infinite_train_generator,
+        epochs=training_params["num_epochs"],
+        steps_per_epoch=training_params["num_data_input"]
+        // training_params["batch_size"]
+        * training_params["augmentation_factor"],
+        callbacks=callbacks,
+    )
+    print("Done training model.", flush=True)
+    flow_model.save_weights(run_params["model_dir"] + "/model_weights")
+    print("Model weights saved to file.", flush=True)
+else:
+    print(f"Loading model weights from file in {run_params['model_dir']}.", flush=True)
+    flow_model.load_weights(run_params["model_dir"] + "/model_weights")
 
 
 if run_params["do_imgs_and_points"]:
@@ -114,7 +175,9 @@ if run_params["do_imgs_and_points"]:
         regen_pts=top_outliers,
         add_plot_num=True,
     )
-    print(f"Now regenerating {run_params['num_gen_sims']} inlier images...", flush=True)
+    print(
+        f"Now regenerating {run_params['num_gen_sims']} inlier images...", flush=True
+    )
     inlier_pts = utils.generate_imgs_in_batches(
         flow_model,
         run_params["num_gen_sims"],

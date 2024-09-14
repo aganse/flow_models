@@ -55,17 +55,23 @@ available, at
 
 
 ### A. To install/prepare
-1. For full runs on a GPU-enabled EC2 instance (as opposed to just initial
-   smaller scale testing on a CPU-only instance), I recommend following
+1. For full runs on a GPU-enabled EC2 instance I recommend following
    [these instructions](https://github.com/aganse/py_tf2_gpu_dock_mlflow/blob/main/doc/aws_ec2_install.md)
    from my [py_tf2_gpu_dock_mlflow](https://github.com/aganse/py_tf2_gpu_dock_mlflow)
-   repository to set that up.
+   repository to set that instance up.  A GPU instance is recommended for the
+   image based application runs.
 
-   I'm also working on some scripts to kick off the training remotely in a
-   Docker container via AWS ECR using AWS Batch (that's what's in subdir
-   `awsbatch-support`), but that's not ready yet.  Meanwhile, simply installing
-   on the GPU-enabled instance per those instructions linked above allows to
-   run the training on there.
+   The 2D and 3D data-points based application runs (applications 1, 4, 5)  are
+   fine on a cheap CPU instance (I've been just running on a t3.small for those).
+
+   I haven't gotten to the later-numbered application runs yet but I'm guessing
+   either a longer t3.small run or running on a higher t3 CPU instance for
+   application 6.  And likely GPU instance for wave-based inverse problem in
+   application 7.
+
+   I've been experimenting with some scripts in subdir `awsbatch-support` to
+   kick off the training remotely in a Docker container via AWS ECR using AWS
+   Batch.  But that's not all ready/settled yet, so you can ignore that subdir.
 
 2. Create the python environment and install dependencies:
     ```
@@ -77,11 +83,13 @@ available, at
     this macro creates new .venvN subdirectories incrementing N to avoid
     overwriting existing env subdirectories.)
 
-3. Get images to train/test with:
+3. Get images if using image applications like in applications 2 and 3:
 
     Of course you can use whatever images you want.  For my experimentation I
     used the really nicely curated Kaggle dataset
-    [animal-faces](https://www.kaggle.com/datasets/andrewmvd/animal-faces).
+    [animal-faces](https://www.kaggle.com/datasets/andrewmvd/animal-faces)
+    which contains approx 5000 cats, approx 5000 dogs, and approx 5000 misc
+    wild animals (fox, leopard, lion, tiger, wolf, etc).
 
     If using a dedicated GPU-enabled instance, you could save these image files
     directly on that instance in a `data` subdir within the `flow_models` repo
@@ -112,8 +120,10 @@ available, at
 2. Set environment variable `export TF_CPP_MIN_LOG_LEVEL=2` to squelch a number of status/info lines spewed by Tensorflow and Tensorflow
     Probability (TFP) that I don't find too helpful and that make a mess in the console output.  (Similarly note I've put a python line
     at the top of train.py to squelch `UserWarning`s that are spewed by TFP.)
-3. Set desired parameters in `train.py`.
-4. Run `python train.py`.
+3. Set desired parameters in `train_flowmodelsN.py` (where the `N` is the number
+    of the application 1-7, ie working towards 7 train scripts for the 7
+    applications.
+4. Run `python train_flowmodelsN.py` (again where `N` is the application number).
 
 
 ### C. Some key references

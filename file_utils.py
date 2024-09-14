@@ -333,3 +333,18 @@ class S3ImageDataGenerator:
             zoomed_image, target_size[0], target_size[1]
         )
         return image
+
+
+def infinite_generator(generator):
+    """Ensures train_generator repeats indefinitely so can use augmentation.
+    (it isn't doing so without this - why not?)
+
+    Usage:
+    datagen = ImageDataGenerator(...)
+    train_generator = datagen.flow_from_directory(...)
+    infinite_train_generator = file_utils.infinite_generator(train_generator)
+    flow_model.fit(infinite_train_generator, epochs=num_epochs, ...)
+    """
+    while True:
+        for batch in generator:
+            yield batch
