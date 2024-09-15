@@ -6,7 +6,14 @@ import re
 import boto3
 import numpy as np
 from PIL import Image
+from sklearn import datasets
+from sklearn.mixture import GaussianMixture
 import tensorflow as tf
+from tensorflow.keras.preprocessing.image import (
+    ImageDataGenerator,
+    load_img,
+    img_to_array,
+)
 
 
 s3_paginator = boto3.client("s3").get_paginator("list_objects_v2")
@@ -186,6 +193,10 @@ class S3ImageDataGenerator:
             bucket_name, _, prefix = uri[5:].partition("/")
             s3 = boto3.client("s3")
             response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+            if "Contents" not in response:
+                raise FileNotFoundError(
+                    f"No objects found with prefix '{prefix}' in bucket '{bucket_name}'."
+                )
             all_keys = [
                 obj["Key"]
                 for obj in response["Contents"]
@@ -335,6 +346,25 @@ class S3ImageDataGenerator:
         return image
 
 
+def image_files_to_data_generator(filenames, target_size=(224, 224), batch_size=1):
+    """Generator for list of filename path strings (as opposed to image dir).
+    Meant for obtaining transformed points for specific image files (e.g. used
+    when doing the interpolation between categories of images).
+    """
+    if isinstance(filenames, str):
+        filenames = [filenames]
+    datagen = ImageDataGenerator()
+
+    def generator():
+        for filename in filenames:
+            img = load_img(filename, target_size=target_size)
+            x = img_to_array(img)
+            x = tf.expand_dims(x, axis=0)
+            yield datagen.flow(x, batch_size=batch_size)
+
+    return generator
+
+
 def infinite_generator(generator):
     """Ensures train_generator repeats indefinitely so can use augmentation.
     (it isn't doing so without this - why not?)
@@ -348,3 +378,98 @@ def infinite_generator(generator):
     while True:
         for batch in generator:
             yield batch
+
+
+def get_data_generator(
+    dataset, batch_size=32, class_mode=None, images_path=None, target_size=None
+):
+    """Supply data generator for specified dataset, as these datasets get reused
+    for multiple purposes in our different example applications, called as a
+    one-liner e.g. like this:
+    my_generator = get_data_generator(run_params["dataset"], training_params["batch_size"])
+
+    Parameters:
+    -----------
+    dataset: string of "moons", "GMM", "cats", "catsdogs", "invkin", or "glacgrav"
+    batch_size: int
+    images_path: string: local filesystem dir or s3 url like s3://mybucket/prefix,
+        currently only relevant to "cats" and "catsdogs" datasets,
+        if images_path starts with "s3://" then looks in S3, otherwise assumes local filesys.
+    target_size: 2d tuple of image height/width,
+        currently only relevant to "cats" and "catsdogs" datasets,
+        typically set to model_arch_params["image_shape"][:2].
+    class_mode: None for unsup or string "input" for supervised learning (via
+        image subdirs like "cats" and "dogs" within "train" or "val" dirs)
+    Returns:
+    --------
+    data generator object for specified dataset
+    """
+
+    params = {
+        "moons": {"noise": 0.1},
+        "gmm": {
+            "means": [[0, 0], [3, 3], [-3, -3]],
+            "covariances": [np.eye(2) for _ in range(3)],
+            "weights": [0.3, 0.4, 0.3],
+        },
+    }
+
+    if dataset == "moons":
+
+        def _create_generator():
+            while True:
+                X, _ = datasets.make_moons(
+                    n_samples=batch_size, noise=params["moons"]["noise"]
+                )
+                yield X.astype(np.float32)
+
+    elif dataset.lower() == "gmm":
+
+        def _create_generator():
+            gmm = GaussianMixture(n_components=len(params["gmm"]["means"]))
+            gmm.weights_ = np.array(params["gmm"]["weights"])
+            gmm.means_ = np.array(params["gmm"]["means"])
+            gmm.covariances_ = np.array(params["gmm"]["covariances"])
+            gmm.precisions_cholesky_ = np.linalg.cholesky(
+                np.linalg.inv(gmm.covariances_)
+            )
+            while True:
+                X, _ = gmm.sample(batch_size)
+                yield X.astype(np.float32)
+
+    elif dataset.lower() == "cats" or dataset.lower() == "catsdogs":
+
+        def _create_generator():
+            if images_path is not None:
+                if images_path[:5] == "s3://":
+                    IDG = S3ImageDataGenerator  # gets images from S3 bucket
+                else:
+                    IDG = ImageDataGenerator  # gets images from local filesystem
+            else:
+                raise ValueError("Dataset 'cats' requires 'images_path' parameter set.")
+
+            datagen = IDG(
+                rescale=1.0 / 255,
+                horizontal_flip=True,
+                zoom_range=0.1,
+                shear_range=0.0,  # 0.1,  # still debugging this feature for S3ImageDG
+                rotation_range=10,
+                width_shift_range=0.0,  # 0.1,  # still debugging this feature for S3ImageDG
+                height_shift_range=0.0,  # 0.1,  # still debugging this feature for S3ImageDG
+            )
+            output = datagen.flow_from_directory(
+                images_path,
+                target_size=target_size,  # images get resized to this size
+                batch_size=batch_size,
+                class_mode=class_mode,
+                shuffle=False,  # True possibly helpful for training but pain for debug/analysis
+            )
+            return output
+
+    elif dataset.lower() == "invkin" or dataset.lower() == "glacgrav":
+        raise ValueError("These will get implemented in future, but are not yet...")
+
+    else:
+        raise ValueError(f"Unrecognized dataset label '{dataset}'.")
+
+    return _create_generator()

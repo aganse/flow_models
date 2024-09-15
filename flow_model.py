@@ -1,6 +1,12 @@
 """
-Usage:
-flow_model = FlowModel(image_shape)
+Typical usage:
+from file_utils import get_data_generator
+from flow_model import default_training_sequence
+train_generator = get_data_generator(dataset=run_params["dataset"], batch_size=training_params["batch_size"])
+flow_model = default_training_sequence(train_generator, run_params, training_params, model_arch_params)
+
+# (inside default_training_sequence() is):
+flow_model = FlowModel(**model_arch_params, reg_level=training_params["reg_level"])
 flow_model.compile(optimizer=tf.optimizers.Adam(learning_rate=0.0001), metrics=[NegLogLikelihood()])
 flow_model.fit(train_data_generator, epochs=num_epochs, steps_per_epoch=steps_per_epoch)
 """
@@ -19,7 +25,7 @@ from file_utils import infinite_generator
 
 class FlowModel(tf.keras.Model):
     """
-    code generally follows Tensorflow documentation at:
+    code generally follows Tensorflow Probability documentation at:
     https://www.tensorflow.org/probability/api_docs/python/tfp/bijectors/RealNVP
 
     # usage with example params
@@ -79,12 +85,12 @@ class FlowModel(tf.keras.Model):
         layer_name = "flow_step"
         flow_step_list = []
         for i in range(flow_steps):
-            flow_step_list.append(
-                tfp.bijectors.BatchNormalization(
-                    validate_args=validate_args,
-                    name="{}_{}_batchnorm".format(layer_name, i),
-                )
-            )
+            # flow_step_list.append(
+            #     tfp.bijectors.BatchNormalization(
+            #         validate_args=validate_args,
+            #         name="{}_{}_batchnorm".format(layer_name, i),
+            #     )
+            # )
             flow_step_list.append(
                 tfp.bijectors.Permute(
                     # permutation=list(reversed(range(flat_image_size))),
@@ -111,7 +117,7 @@ class FlowModel(tf.keras.Model):
         )
         print(
             "flow_step_list (from input to output):",
-            reversed([layer.name for layer in flow_step_list]),
+            list(reversed([layer.name for layer in flow_step_list])),
         )
 
         base_distribution = tfp.distributions.MultivariateNormalDiag(
@@ -159,9 +165,9 @@ class FlowModel(tf.keras.Model):
                 ]
             ):
                 tf.print("NaN or Inf detected in gradients")
-            gradients = [
-                tf.clip_by_value(g, -1.0, 1.0) for g in gradients
-            ]  # gradient clipping
+            # gradients = [
+            #     tf.clip_by_value(g, -1.0, 1.0) for g in gradients
+            # ]  # gradient clipping
         self.optimizer.apply_gradients(zip(gradients, self.flow.trainable_variables))
         bits_per_dim_divisor = np.prod(self.image_shape) * tf.math.log(2.0)
         bpd = neg_log_likelihood / bits_per_dim_divisor

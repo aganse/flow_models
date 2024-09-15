@@ -107,7 +107,7 @@ available, at
     images will be mixed together in the validation dataset:
 
     ```
-    data/
+    data/                <-- or s3 bucket at this level
         train/
             cat/
         val/

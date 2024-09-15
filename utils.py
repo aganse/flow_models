@@ -6,11 +6,6 @@ from scipy.spatial import distance
 import seaborn as sns
 from sklearn.decomposition import PCA
 import tensorflow as tf
-from tensorflow.keras.preprocessing.image import (
-    ImageDataGenerator,
-    load_img,
-    img_to_array,
-)
 
 
 def imgs_to_gaussian_pts(model, image_generator, N, neigvals=100, p_outliers=10):
@@ -25,17 +20,8 @@ def imgs_to_gaussian_pts(model, image_generator, N, neigvals=100, p_outliers=10)
     Make sure neigvals<<M^2.
     """
 
-    # Just making sure neigvals set correctly wrt number of samples:
-    # if neigvals > N:
-    #     if N <= 100:
-    #         neigvals = N
-    #     else:
-    #         neigvals = 100
-    # M = np.prod(model.input_shape[1:])
-
     M = np.prod(next(image_generator).shape[1:])
     neigvals = min(M, N, 100)
-
     # print("imgs_to_gaussian_pts: M=", M, ", N=", N)
 
     def get_n_images(data_generator, n):
@@ -82,11 +68,13 @@ def plot_pts_2d(
     train_pts,
     plotfile="compare_points_2d.png",
     mean=None,
+    main_pts_label="train images",
     sim_pts=None,
     sim_pts_label="sim images",
     other_pts=None,
     other_pts_label="anomaly images",
     num_regen=None,
+    side="latent",  # "latent" or "data"
 ):
     """Scatterplot of various categories of points in the Gaussian latent space."""
 
@@ -96,18 +84,18 @@ def plot_pts_2d(
         pca = PCA(n_components=2)
         if sim_pts is not None and other_pts is not None:
             # Combine and find pca of combo plus origin(mean)
-            pca_pts = pca.fit_transform(np.concatenate([sim_pts, other_pts, [mean]]))
+            mix_pts = pca.fit_transform(np.concatenate([sim_pts, other_pts, [mean]]))
             sim_pts = pca.transform(sim_pts)
             other_pts = pca.transform(other_pts)
             train_pts = pca.transform(train_pts)
         elif sim_pts is not None and other_pts is None:
             # Find pca of sim_pts plus origin(mean)
-            pca_pts = pca.fit_transform(np.concatenate([sim_pts, [mean]]))
+            mix_pts = pca.fit_transform(np.concatenate([sim_pts, [mean]]))
             sim_pts = pca.transform(sim_pts)
             train_pts = pca.transform(train_pts)
         elif sim_pts is None and other_pts is not None:
             # Find pca of other_pts plus origin(mean)
-            pca_pts = pca.fit_transform(np.concatenate([other_pts, [mean]]))
+            mix_pts = pca.fit_transform(np.concatenate([other_pts, [mean]]))
             other_pts = pca.transform(other_pts)
             train_pts = pca.transform(train_pts)
         elif sim_pts is None and other_pts is None:
@@ -116,7 +104,7 @@ def plot_pts_2d(
 
     fig, ax = plt.subplots()
     ax.scatter(
-        train_pts[:, 0], train_pts[:, 1], color="C0", alpha=0.5, label="train images"
+        train_pts[:, 0], train_pts[:, 1], color="C0", alpha=0.5, label=main_pts_label
     )
 
     if num_regen is not None:
@@ -126,12 +114,6 @@ def plot_pts_2d(
             color="cyan",
             label="regen images",
         )
-        # ax.scatter(train_pts[:num_regen, 0], train_pts[:num_regen, 1],
-        #            label="regen images", facecolors='C0', alpha=0.5, edgecolors='k')
-        # for i in range(num_regen):
-        #     ax.annotate(str(i + 1), (train_pts[:num_regen, 0],
-        #                 train_pts[:num_regen, 1]), textcoords="offset points",
-        #                 xytext=(0, 0), ha='center', va='center')
 
     if sim_pts is not None:
         ax.scatter(sim_pts[:, 0], sim_pts[:, 1], color="C1", label=sim_pts_label)
@@ -161,12 +143,18 @@ def plot_pts_2d(
                 va="center",
             )
 
-    ax.legend(
-        loc="center left", bbox_to_anchor=(1, 0.5)
-    )  # put axis outside plot on right side
-    plt.title("2D PCA of mapped gaussian points")
-    plt.xlabel("Principal component 1")
-    plt.ylabel("Principal component 2")
+    # put axis outside plot on right side:
+    ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+
+    if train_pts.shape[1] > 2:
+        plt.title(f"2D PCA of points in {side} space")
+        plt.xlabel("Principal component 1")
+        plt.ylabel("Principal component 2")
+    else:
+        plt.title(f"2D points in {side} space")
+        plt.xlabel("x")
+        plt.ylabel("y")
+
     plt.savefig(plotfile, bbox_inches="tight")
 
 
@@ -435,40 +423,6 @@ def print_model_summary_nested(model):
         if hasattr(layer, "layers"):
             for sub_layer in layer.layers:
                 print(f"  {sub_layer.name}")
-
-
-def image_data_generator(filenames, target_size=(224, 224), batch_size=1):
-    """Generator for list of filename path strings (as opposed to image dir).
-    Meant for obtaining transformed points for specific image files (e.g. used
-    when doing the interpolation between categories of images).
-    """
-    if isinstance(filenames, str):
-        filenames = [filenames]
-    datagen = ImageDataGenerator()
-
-    def generator():
-        for filename in filenames:
-            img = load_img(filename, target_size=target_size)
-            x = img_to_array(img)
-            x = tf.expand_dims(x, axis=0)
-            yield datagen.flow(x, batch_size=batch_size)
-
-    return generator
-
-
-# def infinite_generator(generator):
-#     """Ensures train_generator repeats indefinitely so can use augmentation.
-#     (it isn't doing so without this - why not?)
-
-#     Usage:
-#     datagen = ImageDataGenerator(...)
-#     train_generator = datagen.flow_from_directory(...)
-#     infinite_train_generator = utils.infinite_generator(train_generator)
-#     flow_model.fit(infinite_train_generator, epochs=num_epochs, ...)
-#     """
-#     while True:
-#         for batch in generator:
-#             yield batch
 
 
 def slerp(point1, point2, t):
