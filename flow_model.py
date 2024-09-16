@@ -7,7 +7,7 @@ flow_model = default_training_sequence(train_generator, run_params, training_par
 
 # (inside default_training_sequence() is):
 flow_model = FlowModel(**model_arch_params, reg_level=training_params["reg_level"])
-flow_model.compile(optimizer=tf.optimizers.Adam(learning_rate=0.0001), metrics=[NegLogLikelihood()])
+flow_model.compile(optimizer=Adam(learning_rate=0.0001), metrics=[NegLogLikelihood()])
 flow_model.fit(train_data_generator, epochs=num_epochs, steps_per_epoch=steps_per_epoch)
 """
 
@@ -21,6 +21,18 @@ from tensorflow.keras.optimizers.schedules import ExponentialDecay
 from tensorflow.python.keras.callbacks import TensorBoard
 
 from file_utils import infinite_generator
+
+
+def shift_and_log_scale_fn(x, output_dim):
+    x = tf.keras.Sequential([
+        tf.keras.layers.InputLayer(input_shape=x.shape[1:]),
+        tf.keras.layers.Dense(512, activation='relu'),
+        tf.keras.layers.Dense(512, activation='relu'),
+        tf.keras.layers.Dense(2 * output_dim, activation=None)  # Produces shift and log scale
+    ])(x)
+    # Split the output into shift and log_scale
+    shift, log_scale = tf.split(x, num_or_size_splits=2, axis=-1)
+    return shift, log_scale
 
 
 class FlowModel(tf.keras.Model):
@@ -93,8 +105,8 @@ class FlowModel(tf.keras.Model):
             # )
             flow_step_list.append(
                 tfp.bijectors.Permute(
-                    # permutation=list(reversed(range(flat_image_size))),
-                    permutation=list(np.random.permutation(flat_image_size)),
+                    permutation=list(reversed(range(flat_image_size))),
+                    # permutation=list(np.random.permutation(flat_image_size)),
                     validate_args=validate_args,
                     name="{}_{}_permute".format(layer_name, i),
                 )
@@ -102,10 +114,11 @@ class FlowModel(tf.keras.Model):
             flow_step_list.append(
                 tfp.bijectors.RealNVP(
                     num_masked=flat_image_size // 2,
+                    # shift_and_log_scale_fn=lambda x, output_dim: shift_and_log_scale_fn(x, output_dim),
                     shift_and_log_scale_fn=tfp.bijectors.real_nvp_default_template(
                         hidden_layers=hidden_layers,
-                        kernel_initializer=tf.keras.initializers.GlorotUniform(),
-                        kernel_regularizer=tf.keras.regularizers.l2(reg_level),
+                        # kernel_initializer=tf.keras.initializers.GlorotUniform(),
+                        # kernel_regularizer=tf.keras.regularizers.l2(reg_level),
                     ),
                     validate_args=validate_args,
                     name="{}_{}_realnvp".format(layer_name, i),
@@ -165,28 +178,97 @@ class FlowModel(tf.keras.Model):
                 ]
             ):
                 tf.print("NaN or Inf detected in gradients")
-            # gradients = [
-            #     tf.clip_by_value(g, -1.0, 1.0) for g in gradients
-            # ]  # gradient clipping
+            gradients = [
+                tf.clip_by_value(g, -1.0, 1.0) for g in gradients
+            ]  # gradient clipping
         self.optimizer.apply_gradients(zip(gradients, self.flow.trainable_variables))
         bits_per_dim_divisor = np.prod(self.image_shape) * tf.math.log(2.0)
         bpd = neg_log_likelihood / bits_per_dim_divisor
         return {"neg_log_likelihood": neg_log_likelihood, "bits_per_dim": bpd}
 
 
-def default_training_sequence(
-    train_gen, run_params, training_params, model_arch_params
-):
-    """A prefab training configuration for flow_models, just to speed/ease getting going."""
+def build_trainable_distribution(image_shape, flow_steps, hidden_layers, validate_args):
 
-    flow_model = FlowModel(**model_arch_params, reg_level=training_params["reg_level"])
+    flat_image_size = tf.reduce_prod(image_shape)  # flattened size
+
+    layer_name = "flow_step"
+    flow_step_list = []
+    for i in range(flow_steps):
+        # flow_step_list.append(
+        #     tfp.bijectors.BatchNormalization(
+        #         validate_args=validate_args,
+        #         name="{}_{}_batchnorm".format(layer_name, i),
+        #     )
+        # )
+        flow_step_list.append(
+            tfp.bijectors.Permute(
+                permutation=list(reversed(range(flat_image_size))),
+                # permutation=list(np.random.permutation(flat_image_size)),
+                validate_args=validate_args,
+                name="{}_{}_permute".format(layer_name, i),
+            )
+        )
+        flow_step_list.append(
+            tfp.bijectors.RealNVP(
+                num_masked=flat_image_size // 2,
+                shift_and_log_scale_fn=lambda x, output_dim: shift_and_log_scale_fn(x, output_dim),
+                # shift_and_log_scale_fn=tfp.bijectors.real_nvp_default_template(
+                #     hidden_layers=hidden_layers,
+                #     # kernel_initializer=tf.keras.initializers.GlorotUniform(),
+                #     # kernel_regularizer=tf.keras.regularizers.l2(reg_level),
+                # ),
+                validate_args=validate_args,
+                name="{}_{}_realnvp".format(layer_name, i),
+            )
+        )
+    flow_step_list = list(flow_step_list[1:])  # leave off last permute
+    flow_bijector = tfp.bijectors.Chain(
+        flow_step_list, validate_args=validate_args, name=layer_name
+    )
+    print(
+        "flow_step_list (from input to output):",
+        list(reversed([layer.name for layer in flow_step_list])),
+    )
+
+    base_distribution = tfp.distributions.MultivariateNormalDiag(
+        loc=tf.zeros([flat_image_size])
+    )
+    flow = tfp.distributions.TransformedDistribution(
+        distribution=base_distribution,
+        bijector=flow_bijector,
+        name="Top_Level_Flow_Model",
+    )
+    return flow
+
+
+def default_training_sequence(train_gen, run_params, training_params, model_arch_params):
+    """A prefab training configuration for flow_models to speed/ease getting going,
+    especially as I found that Keras and TFP don't play totally well together."""
+
+    # arg, keras and tfp are not mixing well in this original version:
+    # flow_model = FlowModel(**model_arch_params, reg_level=training_params["reg_level"])
+
+    # trying separating out the tfp calls inside build_trainable_distribution:
+    x_ = tf.keras.Input(shape=(model_arch_params["image_shape"]), dtype=tf.float32)
+    print("image_shape 1:", x_.shape)
+    reshaped_x_ = tf.keras.layers.Lambda(lambda x: tf.reshape(x, (-1, np.prod(model_arch_params["image_shape"]))))(x_)
+    print("image_shape 2:", reshaped_x_.shape)
+    trainable_distribution = build_trainable_distribution(
+        model_arch_params["image_shape"],
+        model_arch_params["flow_steps"],
+        model_arch_params["hidden_layers"],
+        model_arch_params["validate_args"],
+    )
+    print("reshaped_x_.shape:", reshaped_x_.shape)
+    log_prob_ = trainable_distribution.log_prob(reshaped_x_)
+    flow_model = tf.keras.Model(x_, log_prob_)
+
     print("")
     # Model.build() is only necessary when calling .summary() before train:
-    flow_model.build(input_shape=(None, *model_arch_params["image_shape"]))
-    print(
-        "Still working on why model layer specs not outputting to model summary below..."
-    )
-    flow_model.summary()
+    # trainable_distribution.build(input_shape=(None, *model_arch_params["image_shape"]))
+    # trainable_distribution.summary()
+    # print('trainable_variables: ', trainable_distribution.variables)
+    # flow_model.summary()
 
     if run_params["do_train"]:
         print("Training model...", flush=True)
@@ -207,6 +289,8 @@ def default_training_sequence(
             print("train.py: error: learning_rate not scalar or list of length 3.")
             quit()
 
+        flow_model.compile(optimizer=Adam(learning_rate=lrate), loss=lambda _, log_prob: -log_prob)
+
         callbacks = []
         if training_params["early_stopping_patience"] > 0:
             callbacks.append(
@@ -221,10 +305,9 @@ def default_training_sequence(
             callbacks.append(
                 TensorBoard(log_dir=log_dir, histogram_freq=1, write_graph=False)
             )
-        flow_model.compile(optimizer=Adam(learning_rate=lrate))
         infinite_train_generator = infinite_generator(train_gen)
-        flow_model.fit(
-            infinite_train_generator,
+        history = flow_model.fit(
+            x=infinite_train_generator,
             epochs=training_params["num_epochs"],
             steps_per_epoch=training_params["num_data_input"]
             // training_params["batch_size"]
@@ -240,4 +323,4 @@ def default_training_sequence(
         )
         flow_model.load_weights(run_params["model_dir"] + "/model_weights")
 
-    return flow_model
+    return flow_model, history

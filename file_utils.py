@@ -405,20 +405,24 @@ def get_data_generator(
     data generator object for specified dataset
     """
 
+    n_means = 8
+    radius = 14
+    sd = 1
+    ths = 2 * np.pi / n_means * (np.arange(1, n_means + 1))
     params = {
-        "moons": {"noise": 0.1},
         "gmm": {
-            "means": [[0, 0], [3, 3], [-3, -3]],
-            "covariances": [np.eye(2) for _ in range(3)],
-            "weights": [0.3, 0.4, 0.3],
+            "means": np.column_stack([radius * np.cos(ths), radius * np.sin(ths)]),
+            "covariances": [sd * np.eye(2) for _ in range(n_means)],
+            "weights": np.ones(n_means) / n_means
         },
+        "moons": {"noise": 0.1},
     }
 
     if dataset == "moons":
 
         def _create_generator():
             while True:
-                X, _ = datasets.make_moons(
+                X, y = datasets.make_moons(
                     n_samples=batch_size, noise=params["moons"]["noise"]
                 )
                 yield X.astype(np.float32)
@@ -434,8 +438,9 @@ def get_data_generator(
                 np.linalg.inv(gmm.covariances_)
             )
             while True:
-                X, _ = gmm.sample(batch_size)
-                yield X.astype(np.float32)
+                X, y = gmm.sample(batch_size)
+                X = X / 10  # scaling to std~1.0 by previous analysis of Ardizzone example
+                yield X.astype(np.float32), np.zeros(batch_size).astype(np.float32)
 
     elif dataset.lower() == "cats" or dataset.lower() == "catsdogs":
 
@@ -461,7 +466,7 @@ def get_data_generator(
                 images_path,
                 target_size=target_size,  # images get resized to this size
                 batch_size=batch_size,
-                class_mode=class_mode,
+                class_mode=None,
                 shuffle=False,  # True possibly helpful for training but pain for debug/analysis
             )
             return output

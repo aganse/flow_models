@@ -20,14 +20,14 @@ def imgs_to_gaussian_pts(model, image_generator, N, neigvals=100, p_outliers=10)
     Make sure neigvals<<M^2.
     """
 
-    M = np.prod(next(image_generator).shape[1:])
+    M = np.prod(next(image_generator)[0].shape[1:])
     neigvals = min(M, N, 100)
     # print("imgs_to_gaussian_pts: M=", M, ", N=", N)
 
     def get_n_images(data_generator, n):
         images = []
         while len(images) < n:
-            img_batch = next(data_generator)
+            img_batch = next(data_generator)[0]
             for img in img_batch:
                 images.append(img)
                 if len(images) == n:
@@ -36,8 +36,12 @@ def imgs_to_gaussian_pts(model, image_generator, N, neigvals=100, p_outliers=10)
                     return images_tf
 
     images = get_n_images(image_generator, N)
+    print("images.shape 1:", images.shape)
     images = tf.reshape(images, (-1, np.prod(images.shape[1:])))
+    print("images.shape 2:", images.shape)
     gaussian_points = model.call(images)
+    print("first several gaussian pts:", gaussian_points[:8])
+    print("gpts.shape 3:", gaussian_points.shape)
     gaussian_points = gaussian_points.numpy()
 
     if N > 10:
