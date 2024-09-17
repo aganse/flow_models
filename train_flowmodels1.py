@@ -15,7 +15,7 @@ run_params = {
     "dataset": "gmm",
     "num_gen_sims": 1000,  # number of new simulated data to generate
     "do_train": True,  # true = training, false = inference w existing model in model_dir
-    "use_tensorboard": True,
+    "use_tensorboard": False,
 }
 training_params = {
     "num_epochs": 20,
@@ -42,16 +42,16 @@ train_generator = get_data_generator(
     dataset=run_params["dataset"],
     batch_size=training_params["batch_size"],
 )
-print("train_generator test: shape of one batch: ", next(train_generator)[0].shape, "\n")
-# just a quick sanity-check plot of some of the data:
-input_data_test = np.concatenate([next(train_generator)[0] for _ in range(20)], axis=0)
-utils.plot_pts_2d(
-    input_data_test,
-    main_pts_label="original train pts",
-    side="data",
-    plotfile=run_params["output_dir"] + "/test_input_dataspace.png"
-)
-print("test_input_dataspace.png written.")
+# print("train_generator test: shape of one batch: ", next(train_generator)[0].shape, "\n")
+# # just a quick sanity-check plot of some of the data:
+# input_data_test = np.concatenate([next(train_generator)[0] for _ in range(20)], axis=0)
+# utils.plot_pts_2d(
+#     input_data_test,
+#     main_pts_label="original train pts",
+#     side="data",
+#     plotfile=run_params["output_dir"] + "/test_input_dataspace.png"
+# )
+# print("test_input_dataspace.png written.")
 
 
 # Train the model

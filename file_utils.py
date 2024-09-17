@@ -440,7 +440,8 @@ def get_data_generator(
             while True:
                 X, y = gmm.sample(batch_size)
                 X = X / 10  # scaling to std~1.0 by previous analysis of Ardizzone example
-                yield X.astype(np.float32), np.zeros(batch_size).astype(np.float32)
+                # yield X.astype(np.float32), np.zeros(batch_size).astype(np.float32)
+                yield X.astype(np.float32)
 
     elif dataset.lower() == "cats" or dataset.lower() == "catsdogs":
 

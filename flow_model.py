@@ -16,26 +16,14 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.keras.callbacks import EarlyStopping
-from tensorflow.keras.optimizers import Adam
+# from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.optimizers.schedules import ExponentialDecay
 from tensorflow.python.keras.callbacks import TensorBoard
 
 from file_utils import infinite_generator
 
 
-def shift_and_log_scale_fn(x, output_dim):
-    x = tf.keras.Sequential([
-        tf.keras.layers.InputLayer(input_shape=x.shape[1:]),
-        tf.keras.layers.Dense(512, activation='relu'),
-        tf.keras.layers.Dense(512, activation='relu'),
-        tf.keras.layers.Dense(2 * output_dim, activation=None)  # Produces shift and log scale
-    ])(x)
-    # Split the output into shift and log_scale
-    shift, log_scale = tf.split(x, num_or_size_splits=2, axis=-1)
-    return shift, log_scale
-
-
-class FlowModel(tf.keras.Model):
+class FlowModel(tf.Module):
     """
     code generally follows Tensorflow Probability documentation at:
     https://www.tensorflow.org/probability/api_docs/python/tfp/bijectors/RealNVP
@@ -92,6 +80,7 @@ class FlowModel(tf.keras.Model):
 
         super().__init__()
         self.image_shape = image_shape
+        self.optimizer = None
         flat_image_size = np.prod(image_shape)  # flattened size
 
         layer_name = "flow_step"
@@ -142,6 +131,17 @@ class FlowModel(tf.keras.Model):
             name="Top_Level_Flow_Model",
         )
 
+    def set_optimizer(self, optimizer):
+        self.optimizer = optimizer
+
+    @tf.function
+    def sample(self, num_samples=1):
+        return self.flow.sample(num_samples)
+
+    @tf.function
+    def log_prob(self, x):
+        return self.flow.log_prob(x)
+
     @tf.function
     def call(self, inputs):
         """Images to gaussian points"""
@@ -184,61 +184,50 @@ class FlowModel(tf.keras.Model):
         self.optimizer.apply_gradients(zip(gradients, self.flow.trainable_variables))
         bits_per_dim_divisor = np.prod(self.image_shape) * tf.math.log(2.0)
         bpd = neg_log_likelihood / bits_per_dim_divisor
-        return {"neg_log_likelihood": neg_log_likelihood, "bits_per_dim": bpd}
+        return {"loss": neg_log_likelihood, "bits_per_dim": bpd}
 
+    @tf.function
+    def fit(self, x, epochs, steps_per_epoch, callbacks=None):
+        history = {"loss": []}
 
-def build_trainable_distribution(image_shape, flow_steps, hidden_layers, validate_args):
+        # Initialize callbacks if any
+        if callbacks:
+            for callback in callbacks:
+                callback.on_train_begin()
 
-    flat_image_size = tf.reduce_prod(image_shape)  # flattened size
+        for epoch in range(epochs):
+            print(f"Epoch {epoch + 1}/{epochs}")
+            epoch_loss = 0
 
-    layer_name = "flow_step"
-    flow_step_list = []
-    for i in range(flow_steps):
-        # flow_step_list.append(
-        #     tfp.bijectors.BatchNormalization(
-        #         validate_args=validate_args,
-        #         name="{}_{}_batchnorm".format(layer_name, i),
-        #     )
-        # )
-        flow_step_list.append(
-            tfp.bijectors.Permute(
-                permutation=list(reversed(range(flat_image_size))),
-                # permutation=list(np.random.permutation(flat_image_size)),
-                validate_args=validate_args,
-                name="{}_{}_permute".format(layer_name, i),
-            )
-        )
-        flow_step_list.append(
-            tfp.bijectors.RealNVP(
-                num_masked=flat_image_size // 2,
-                shift_and_log_scale_fn=lambda x, output_dim: shift_and_log_scale_fn(x, output_dim),
-                # shift_and_log_scale_fn=tfp.bijectors.real_nvp_default_template(
-                #     hidden_layers=hidden_layers,
-                #     # kernel_initializer=tf.keras.initializers.GlorotUniform(),
-                #     # kernel_regularizer=tf.keras.regularizers.l2(reg_level),
-                # ),
-                validate_args=validate_args,
-                name="{}_{}_realnvp".format(layer_name, i),
-            )
-        )
-    flow_step_list = list(flow_step_list[1:])  # leave off last permute
-    flow_bijector = tfp.bijectors.Chain(
-        flow_step_list, validate_args=validate_args, name=layer_name
-    )
-    print(
-        "flow_step_list (from input to output):",
-        list(reversed([layer.name for layer in flow_step_list])),
-    )
+            # Loop over steps per epoch
+            for step in range(steps_per_epoch):
+                # Generate data batch from generator
+                data_batch = next(x)
+                loss = self.train_step(data_batch)["loss"]
+                epoch_loss += loss
 
-    base_distribution = tfp.distributions.MultivariateNormalDiag(
-        loc=tf.zeros([flat_image_size])
-    )
-    flow = tfp.distributions.TransformedDistribution(
-        distribution=base_distribution,
-        bijector=flow_bijector,
-        name="Top_Level_Flow_Model",
-    )
-    return flow
+                # Handle batch end callbacks if any
+                if callbacks:
+                    for callback in callbacks:
+                        callback.on_batch_end(step, logs={'loss': loss})
+
+            # Average loss over the steps in the epoch
+            epoch_loss /= steps_per_epoch
+            history["loss"].append(epoch_loss)
+
+            print(f" - loss: {epoch_loss}")
+
+            # Handle epoch end callbacks if any
+            if callbacks:
+                for callback in callbacks:
+                    callback.on_epoch_end(epoch, logs={"loss": epoch_loss})
+
+        # Handle train end callbacks if any
+        # if callbacks:
+        #     for callback in callbacks:
+        #         callback.on_train_end()
+
+        return history
 
 
 def default_training_sequence(train_gen, run_params, training_params, model_arch_params):
@@ -246,22 +235,22 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
     especially as I found that Keras and TFP don't play totally well together."""
 
     # arg, keras and tfp are not mixing well in this original version:
-    # flow_model = FlowModel(**model_arch_params, reg_level=training_params["reg_level"])
+    flow_model = FlowModel(**model_arch_params, reg_level=training_params["reg_level"])
 
-    # trying separating out the tfp calls inside build_trainable_distribution:
-    x_ = tf.keras.Input(shape=(model_arch_params["image_shape"]), dtype=tf.float32)
-    print("image_shape 1:", x_.shape)
-    reshaped_x_ = tf.keras.layers.Lambda(lambda x: tf.reshape(x, (-1, np.prod(model_arch_params["image_shape"]))))(x_)
-    print("image_shape 2:", reshaped_x_.shape)
-    trainable_distribution = build_trainable_distribution(
-        model_arch_params["image_shape"],
-        model_arch_params["flow_steps"],
-        model_arch_params["hidden_layers"],
-        model_arch_params["validate_args"],
-    )
-    print("reshaped_x_.shape:", reshaped_x_.shape)
-    log_prob_ = trainable_distribution.log_prob(reshaped_x_)
-    flow_model = tf.keras.Model(x_, log_prob_)
+    # # trying separating out the tfp calls inside build_trainable_distribution:
+    # x_ = tf.keras.Input(shape=(model_arch_params["image_shape"]), dtype=tf.float32)
+    # print("image_shape 1:", x_.shape)
+    # reshaped_x_ = tf.keras.layers.Lambda(lambda x: tf.reshape(x, (-1, np.prod(model_arch_params["image_shape"]))))(x_)
+    # print("image_shape 2:", reshaped_x_.shape)
+    # trainable_distribution = build_trainable_distribution(
+    #     model_arch_params["image_shape"],
+    #     model_arch_params["flow_steps"],
+    #     model_arch_params["hidden_layers"],
+    #     model_arch_params["validate_args"],
+    # )
+    # print("reshaped_x_.shape:", reshaped_x_.shape)
+    # log_prob_ = trainable_distribution.log_prob(reshaped_x_)
+    # training_wrapper_model = tf.keras.Model(x_, log_prob_)
 
     print("")
     # Model.build() is only necessary when calling .summary() before train:
@@ -289,7 +278,9 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             print("train.py: error: learning_rate not scalar or list of length 3.")
             quit()
 
-        flow_model.compile(optimizer=Adam(learning_rate=lrate), loss=lambda _, log_prob: -log_prob)
+        # training_wrapper_model.compile(optimizer=Adam(learning_rate=lrate), loss=lambda _, log_prob: -log_prob)
+        # flow_model.compile(optimizer=Adam(learning_rate=lrate), loss=lambda _, log_prob: -log_prob)
+        flow_model.set_optimizer(tf.optimizers.Adam(learning_rate=lrate))
 
         callbacks = []
         if training_params["early_stopping_patience"] > 0:
@@ -306,6 +297,7 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
                 TensorBoard(log_dir=log_dir, histogram_freq=1, write_graph=False)
             )
         infinite_train_generator = infinite_generator(train_gen)
+        # history = training_wrapper_model.fit(
         history = flow_model.fit(
             x=infinite_train_generator,
             epochs=training_params["num_epochs"],
@@ -315,12 +307,17 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             callbacks=callbacks,
         )
         print("Done training model.", flush=True)
-        flow_model.save_weights(run_params["model_dir"] + "/model_weights")
-        print("Model weights saved to file.", flush=True)
+        # trainable_distribution.save_weights(run_params["model_dir"] + "/model_weights")
+        # print("Model weights saved to file.", flush=True)
     else:
         print(
             f"Loading model weights from file in {run_params['model_dir']}.", flush=True
         )
         flow_model.load_weights(run_params["model_dir"] + "/model_weights")
+
+    # flow_model = TrainableDistributionContainer(trainable_distribution, model_arch_params["image_shape"])
+    # print_model_summary(flow_model)
+    # print('-----------------------------')
+    # print_model_summary_nested(flow_model)
 
     return flow_model, history

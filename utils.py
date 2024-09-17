@@ -20,14 +20,16 @@ def imgs_to_gaussian_pts(model, image_generator, N, neigvals=100, p_outliers=10)
     Make sure neigvals<<M^2.
     """
 
-    M = np.prod(next(image_generator)[0].shape[1:])
+    # M = np.prod(next(image_generator)[0].shape[1:])
+    M = np.prod(next(image_generator).shape[1:])
     neigvals = min(M, N, 100)
     # print("imgs_to_gaussian_pts: M=", M, ", N=", N)
 
     def get_n_images(data_generator, n):
         images = []
         while len(images) < n:
-            img_batch = next(data_generator)[0]
+            # img_batch = next(data_generator)[0]
+            img_batch = next(data_generator)
             for img in img_batch:
                 images.append(img)
                 if len(images) == n:
