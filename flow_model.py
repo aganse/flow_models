@@ -73,6 +73,7 @@ class FlowModel(tf.keras.Model):
         flow_steps=4,
         validate_args=False,
         bijector="realnvp-based",  # or "glow"
+        grad_norm_thresh=None,
         reg_level=0.01,
     ):
         """RealNVP-based flow architecture, using TFP as much as possible so the
@@ -81,6 +82,7 @@ class FlowModel(tf.keras.Model):
 
         super().__init__()
         self.image_shape = image_shape
+        self.grad_norm_thresh = grad_norm_thresh
         self.shift_and_log_scale_layers = []
         flat_image_size = np.prod(image_shape)  # flattened size
 
@@ -121,12 +123,12 @@ class FlowModel(tf.keras.Model):
                 )
                 flow_step_list.append(
                     tfb.Permute(
-                        # Simply alternating halves:
-                        # permutation=(
-                        #     list(reversed(range(flat_image_size)))
-                        #     if i % 2 == 0 else range(flat_image_size)
-                        # ),
-                        permutation=list(np.random.permutation(flat_image_size)),
+                        # Simply alternating order back and forth:
+                        permutation=(
+                            list(reversed(range(flat_image_size)))
+                            if i % 2 == 0 else range(flat_image_size)
+                        ),
+                        # permutation=list(np.random.permutation(flat_image_size)),
                         validate_args=validate_args,
                         name="{}_{}_Permute".format(layer_name, i),
                     )
@@ -208,13 +210,16 @@ class FlowModel(tf.keras.Model):
         images = data
         images = tf.reshape(images, (-1, np.prod(self.image_shape)))
         with tf.GradientTape() as tape:
+
             log_prob = self.flow.log_prob(images)
             if tf.reduce_any(tf.math.is_nan(log_prob)) or tf.reduce_any(
                 tf.math.is_inf(log_prob)
             ):
                 tf.print("NaN or Inf detected in log_prob")
+
             neg_log_likelihood = -tf.reduce_mean(log_prob)
             gradients = tape.gradient(neg_log_likelihood, self.flow.trainable_variables)
+
             if tf.reduce_any(
                 [
                     tf.reduce_any(tf.math.is_nan(g)) or tf.reduce_any(tf.math.is_inf(g))
@@ -222,24 +227,48 @@ class FlowModel(tf.keras.Model):
                 ]
             ):
                 tf.print("NaN or Inf detected in gradients")
-            gradients = [
-                tf.clip_by_value(g, -1.0, 1.0) for g in gradients
-            ]  # gradient clipping
+
+            # Gradient clipping:
+            if self.grad_norm_thresh is not None:
+                preclip_grad_norm = tf.linalg.global_norm(gradients)
+                preclip_grad_norm = tf.reduce_mean(preclip_grad_norm)
+                gradients, _ = tf.clip_by_global_norm(gradients, clip_norm=self.grad_norm_thresh)  # scales whole gradient
+                # gradients = [tf.clip_by_value(g, -1.0, 1.0) for g in gradients]  # gradient direction can change
+            postclip_grad_norm = tf.linalg.global_norm(gradients)
+
         self.optimizer.apply_gradients(zip(gradients, self.flow.trainable_variables))
+
+        # Assemble and output progress values to log
         bits_per_dim_divisor = np.prod(self.image_shape) * tf.math.log(2.0)
         bpd = neg_log_likelihood / bits_per_dim_divisor
+        outdict = {
+            "loss": neg_log_likelihood,
+            "bits_per_dim": bpd,
+        }
+        if self.grad_norm_thresh is not None:
+            outdict.update({
+                "preclip_grad_norm": preclip_grad_norm,
+                "postclip_grad_norm": postclip_grad_norm,
+            })
+        else:
+            outdict.update({
+                "grad_norm": postclip_grad_norm,
+            })
         if isinstance(self.optimizer.lr, tf.keras.optimizers.schedules.LearningRateSchedule):
             current_lr = self.optimizer.lr(self.optimizer.iterations)
-        else:
-            current_lr = self.optimizer.lr
-        return {"loss": neg_log_likelihood, "bits_per_dim": bpd, "learning_rate": current_lr}
+            outdict.update({"learning_rate": current_lr})
+        return outdict
 
 
 def default_training_sequence(train_gen, run_params, training_params, model_arch_params):
     """A prefab training configuration for flow_models to speed/ease getting going,
     especially as I found that Keras and TFP don't play totally well together."""
 
-    flow_model = FlowModel(**model_arch_params, reg_level=training_params["reg_level"])
+    flow_model = FlowModel(
+        **model_arch_params,
+        reg_level=training_params["reg_level"],
+        grad_norm_thresh=training_params["grad_norm_thresh"]
+    )
     flow_model.build(input_shape=(None, *model_arch_params["image_shape"]))
     flow_model.summary()
     # flow_model.print_vars()

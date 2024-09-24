@@ -15,25 +15,26 @@ run_params = {
     "dataset": "gmm",
     "num_gen_sims": 1000,  # number of new simulated data to generate
     "do_train": True,  # true = training, false = inference w existing model in model_dir
-    "use_tensorboard": False,
+    "use_tensorboard": True,
 }
 training_params = {
-    "num_epochs": 4,
+    "num_epochs": 100,
     "batch_size": 256,
     "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-    # "learning_rate": 0.001,  # scaler -> constant learning rate
-    "learning_rate": [0.001, 300, 0.10],  # [initial_rate, decay_steps, decay_rate]
+    "learning_rate": 0.001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+    # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
     #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
     #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
     "early_stopping_patience": 0,  # value <=0 turns off early_stopping
-    "num_data_input": 1000,  # num training data pts or images (whether pts or files)
+    "num_data_input": 1000000,  # num training data pts or images (whether pts or files)
     "augmentation_factor": 1,  # set >1 to have augmentation turned on
+    "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
 }
 model_arch_params = {
     "image_shape": (2,),  # 2D points with (no color labels in this run)
     "bijector": "realnvp-based",
-    "flow_steps": 6,  # number of realnvp-based affine coupling layers
-    "hidden_layers": [512, 512],  # nodes/layer in realnvp-based affine coupling layers
+    "flow_steps": 4,  # number of realnvp-based affine coupling layers
+    "hidden_layers": [256, 256],  # nodes/layer in realnvp-based affine coupling layers
     "validate_args": True,
 }
 # List the param settings:
