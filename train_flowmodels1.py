@@ -1,6 +1,6 @@
 import warnings
 
-import numpy as np
+# import numpy as np
 
 from file_utils import get_data_generator
 from flow_model import default_training_sequence
@@ -18,21 +18,26 @@ run_params = {
     "use_tensorboard": False,
 }
 training_params = {
-    "num_epochs": 20,
-    "batch_size": 128,
+    "num_epochs": 4,
+    "batch_size": 256,
     "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-    "learning_rate": 0.00002,  # scaler -> constant learning rate
+    # "learning_rate": 0.001,  # scaler -> constant learning rate
+    "learning_rate": [0.001, 300, 0.10],  # [initial_rate, decay_steps, decay_rate]
+    #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
+    #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
     "early_stopping_patience": 0,  # value <=0 turns off early_stopping
     "num_data_input": 1000,  # num training data pts or images (whether pts or files)
     "augmentation_factor": 1,  # set >1 to have augmentation turned on
 }
 model_arch_params = {
     "image_shape": (2,),  # 2D points with (no color labels in this run)
-    "hidden_layers": [256, 256],  # nodes per layer within affine coupling layers
-    "flow_steps": 4,  # number of affine coupling layers
+    "bijector": "realnvp-based",
+    "flow_steps": 6,  # number of realnvp-based affine coupling layers
+    "hidden_layers": [512, 512],  # nodes/layer in realnvp-based affine coupling layers
     "validate_args": True,
 }
 # List the param settings:
+print("")
 utils.print_run_params(**run_params, **training_params, **model_arch_params)
 
 
@@ -63,6 +68,8 @@ flow_model, history = default_training_sequence(
 
 # Analyze/plot various model results
 # ----------------------------------
+print("Analyzing/plotting various model results:")
+print("-----------------------------------------")
 # map 1000 pts from train_generator thru flow_model to latent space:
 mapped_training_pts, mean, cov, pca, top_outliers, closest_to_mean = (
     utils.imgs_to_gaussian_pts(flow_model, train_generator, 1000)

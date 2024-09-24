@@ -126,7 +126,7 @@ available, at
 4. Run `python train_flowmodelsN.py` (again where `N` is the application number).
 
 
-### C. Some key references
+### C. Key references
 
 * Distribution mapping and generative image modeling with INNs
   - [RealNVP paper](https://arxiv.org/pdf/1605.08803)
@@ -141,3 +141,39 @@ available, at
 
 * TensorFlow Probability components
   - [tfp.bijectors.RealNVP API](https://www.tensorflow.org/probability/api_docs/python/tfp/bijectors/RealNVP)
+
+
+### D. Misc other notes and refs that I perused
+
+* A RealNVP tutorial found in Github:  https://github.com/MokkeMeguru/glow-realnvp-tutorial/blob/master/tips/RealNVP_mnist_en.ipynb
+
+* Kang ISSP 2020 paper on NICE INNs:  https://jaekookang.me/issp2020/
+
+* Eric Jang Normalizing Flows Tutorial:  https://blog.evjang.com/2018/01/nf2.html
+
+* Lilian Weng Flow-based Deep Generative Models tutorial:  http://lilianweng.github.io/posts/2018-10-13-flow-models
+
+* Jaekoo Kang's flow_based_models NICE & RealNVP repo:  https://github.com/jaekookang/flow_based_models
+
+* Jaekoo Kang's INNs repo (Ardizzone implementation):  https://github.com/jaekookang/invertible_neural_networks
+
+* Chanseok Kang's RealNVP notebook:
+    https://colab.research.google.com/github/goodboychan/goodboychan.github.io/blob/main/_notebooks/2021-09-08-01-AutoRegressive-flows-and-RealNVP.ipynb#scrollTo=NNun_3RT3A56
+
+* RealNVP implementation example in Stackoverflow:
+    https://stackoverflow.com/questions/57261612/better-way-of-building-realnvp-layer-in-tensorflow-2-0
+
+* Brian Keng's Normalizing Flows with Real NVP article, more mathematical:
+    https://bjlkeng.io/posts/normalizing-flows-with-real-nvp/#modified-batch-normalization
+
+* Helpful rundown of bits-per-dimension in Papamakarios et al 2018 paper
+    "Masked Autoregressive Flow for Density Estimation": https://arxiv.org/pdf/1705.07057
+    section E.2; note they call it "bits per pixel".  They express in
+    average log likelihoods too (note that's actually what the NLL value
+    is at very bottom of this script here).
+
+* Note in NICE paper regarding flow_steps: "Examining the Jacobian, we
+  observe that at least three coupling layers are necessary to allow all
+  dimensions to influence one another. We generally use four."  And they
+  used 1000-5000 nodes in their hidden layers, with 4-5 hidden layers per
+  coupling layer.

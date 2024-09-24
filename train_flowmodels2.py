@@ -30,8 +30,9 @@ training_params = {
 }
 model_arch_params = {
     "image_shape": (256, 256, 3),  # (height, width, channels) of images
-    "hidden_layers": [512, 512],  # nodes per layer within affine coupling layers
-    "flow_steps": 6,  # number of affine coupling layers
+    "bijector": "realnvp-based",  # "realnvp-based" or "glow"
+    "flow_steps": 6,  # number of realnvp-based affine coupling layers
+    "hidden_layers": [512, 512],  # nodes/layer in realnvp-based affine coupling layers
     "validate_args": True,
 }
 # List the param settings:

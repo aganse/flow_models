@@ -395,7 +395,8 @@ def print_run_params(**kwargs):
             "print_run_params: error: 'output_dir' must be one of the kwargs."
         )
 
-    print("Run params:", kwargs)
+    print("Run params:")
+    print(kwargs)
 
     output_dir = kwargs.pop("output_dir")
     file_path = output_dir + "/run_parameters.txt"
