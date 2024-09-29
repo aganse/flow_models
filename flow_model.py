@@ -26,7 +26,36 @@ tfb = tfp.bijectors
 tfd = tfp.distributions
 
 
-class ShiftAndLogScaleLayer(tf.keras.layers.Layer):
+class ShiftAndLogScaleCNN(tf.keras.layers.Layer):
+    """A home-grown shift_and_log_scale_fn callable that's comparable to
+    tfb.real_nvp_default_template but this way allows experimentation and
+    expansion.
+    """
+    def __init__(
+        self,
+        output_dim,
+        name=None,
+        layers=None,
+        kernel_initializer="glorot_uniform",
+        kernel_regularizer=None,
+        leakyrelualpha=0.01
+    ):
+        super().__init__(name=name)
+        layers = []
+        for filters in layers:
+            layers.append(tf.keras.layers.Conv2D(filters=filters, kernel_size=3, padding="same"))
+            layers.append(tf.keras.layers.BatchNormalization())
+            layers.append(tf.keras.layers.LeakyReLU(alpha=leakyrelualpha))
+        layers.append(tf.keras.layers.Dense(2 * output_dim, activation=None))
+        self.nn = tf.keras.Sequential(layers)
+
+    def call(self, x, output_units, **kwargs):
+        shift_log_scale = self.nn(x)
+        shift, log_scale = tf.split(shift_log_scale, num_or_size_splits=2, axis=-1)
+        return shift, log_scale
+
+
+class ShiftAndLogScaleDense(tf.keras.layers.Layer):
     """A home-grown shift_and_log_scale_fn callable that's comparable to
     tfb.real_nvp_default_template but this way allows experimentation and
     expansion.
@@ -36,8 +65,9 @@ class ShiftAndLogScaleLayer(tf.keras.layers.Layer):
         output_dim,
         name=None,
         hidden_layers=None,
-        kernel_initializer='glorot_uniform',
-        kernel_regularizer=None
+        kernel_initializer="glorot_uniform",
+        kernel_regularizer=None,
+        leakyrelualpha=0.01
     ):
         super().__init__(name=name)
         layers = []
@@ -45,10 +75,12 @@ class ShiftAndLogScaleLayer(tf.keras.layers.Layer):
             layers.append(
                 tf.keras.layers.Dense(
                     nodes,
-                    activation='relu',
                     kernel_initializer=kernel_initializer,
                     kernel_regularizer=kernel_regularizer
                 )
+            )
+            layers.append(
+                tf.keras.layers.LeakyReLU(alpha=leakyrelualpha)
             )
         layers.append(tf.keras.layers.Dense(2 * output_dim, activation=None))
         self.nn = tf.keras.Sequential(layers)
@@ -99,7 +131,8 @@ class FlowModel(tf.keras.Model):
             layer_name = "Flow_step"
             flow_step_list = []
             for i in range(flow_steps):
-                shift_log_scale_layer = ShiftAndLogScaleLayer(
+                # shift_log_scale_layer = ShiftAndLogScaleCNN(
+                shift_log_scale_layer = ShiftAndLogScaleDense(
                     output_dim=flat_image_size // 2,
                     name="{}_{}_shift_log_scale_layer".format(layer_name, i),
                     hidden_layers=hidden_layers,
@@ -123,7 +156,7 @@ class FlowModel(tf.keras.Model):
                 )
                 flow_step_list.append(
                     tfb.Permute(
-                        # Simply alternating order back and forth:
+                        # Simply alternating order back and forth layer to layer:
                         permutation=(
                             list(reversed(range(flat_image_size)))
                             if i % 2 == 0 else range(flat_image_size)
@@ -133,7 +166,8 @@ class FlowModel(tf.keras.Model):
                         name="{}_{}_Permute".format(layer_name, i),
                     )
                 )
-                # this is in paper but I can't get it to stabilize:
+                # This is mentioned in paper but I can't get it to stabilize:
+                # (note if using this need to use [:-2] rather than [:-1] below)
                 # flow_step_list.append(
                 #     tfb.BatchNormalization(
                 #         validate_args=validate_args,
@@ -299,7 +333,7 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         if training_params["early_stopping_patience"] > 0:
             callbacks.append(
                 EarlyStopping(
-                    monitor="neg_log_likelihood",
+                    monitor="loss",
                     patience=training_params["early_stopping_patience"],
                     restore_best_weights=True,
                 )

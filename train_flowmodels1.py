@@ -1,11 +1,10 @@
 import warnings
 
-# import numpy as np
+import numpy as np
 
+import utils
 from file_utils import get_data_generator
 from flow_model import default_training_sequence
-import utils
-
 
 warnings.filterwarnings("ignore", category=UserWarning)  # TFP spews a number of these
 
@@ -21,20 +20,21 @@ training_params = {
     "num_epochs": 100,
     "batch_size": 256,
     "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-    "learning_rate": 0.001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+    "learning_rate": 0.0002,  # scaler -> constant learning rate; vector of 3 -> lr schedule
     # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
     #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
     #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
-    "early_stopping_patience": 0,  # value <=0 turns off early_stopping
-    "num_data_input": 1000000,  # num training data pts or images (whether pts or files)
+    "early_stopping_patience": 10,  # value <=0 turns off early_stopping
+    # choose 600000 data points because current model arch has 534,544 params:
+    "num_data_input": 600000,  # num training data pts or images (whether pts or files)
     "augmentation_factor": 1,  # set >1 to have augmentation turned on
     "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
 }
 model_arch_params = {
     "image_shape": (2,),  # 2D points with (no color labels in this run)
     "bijector": "realnvp-based",
-    "flow_steps": 4,  # number of realnvp-based affine coupling layers
-    "hidden_layers": [256, 256],  # nodes/layer in realnvp-based affine coupling layers
+    "flow_steps": 8,  # number of realnvp-based affine coupling layers
+    "hidden_layers": [256, 256],  # nodes/denselayer or filters/cnnlayer in affine coupling layers
     "validate_args": True,
 }
 # List the param settings:
@@ -48,16 +48,21 @@ train_generator = get_data_generator(
     dataset=run_params["dataset"],
     batch_size=training_params["batch_size"],
 )
-# print("train_generator test: shape of one batch: ", next(train_generator)[0].shape, "\n")
-# # just a quick sanity-check plot of some of the data:
-# input_data_test = np.concatenate([next(train_generator)[0] for _ in range(20)], axis=0)
-# utils.plot_pts_2d(
-#     input_data_test,
-#     main_pts_label="original train pts",
-#     side="data",
-#     plotfile=run_params["output_dir"] + "/test_input_dataspace.png"
-# )
-# print("test_input_dataspace.png written.")
+print(
+    "train_generator test: shape of one batch: ", next(train_generator)[0].shape, "\n"
+)
+if run_params["dataset"] in ["moons", "gmm", "mvn"]:
+    # Quick sanity-check plot of some of the data for this group of 2D problems
+    input_data_test = np.concatenate(
+        [next(train_generator) for _ in range(20)], axis=0
+    )
+    utils.plot_pts_2d(
+        input_data_test,
+        main_pts_label="original train pts",
+        side="data",
+        plotfile=run_params["output_dir"] + "/test_input_dataspace.png",
+    )
+    print("test_input_dataspace.png written.")
 
 
 # Train the model

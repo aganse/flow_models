@@ -410,6 +410,10 @@ def get_data_generator(
     sd = 1
     ths = 2 * np.pi / n_means * (np.arange(1, n_means + 1))
     params = {
+        "mvn": {
+            "mean": [3.0, 5.0],
+            "covariance": sd * np.eye(2),
+        },
         "gmm": {
             "means": np.column_stack([radius * np.cos(ths), radius * np.sin(ths)]),
             "covariances": [sd * np.eye(2) for _ in range(n_means)],
@@ -425,6 +429,15 @@ def get_data_generator(
                 X, y = datasets.make_moons(
                     n_samples=batch_size, noise=params["moons"]["noise"]
                 )
+                yield X.astype(np.float32)
+
+    elif dataset.lower() == "mvn":
+
+        def _create_generator():
+            mean = np.array(params["mvn"]["mean"])
+            cov = np.array(params["mvn"]["covariance"])
+            while True:
+                X = np.random.multivariate_normal(mean, cov, size=batch_size)
                 yield X.astype(np.float32)
 
     elif dataset.lower() == "gmm":
