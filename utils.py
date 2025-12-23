@@ -1,3 +1,4 @@
+import itertools
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -6,6 +7,12 @@ from scipy.spatial import distance
 import seaborn as sns
 from sklearn.decomposition import PCA
 import tensorflow as tf
+
+
+def _unwrap_batch(batch):
+    if isinstance(batch, (tuple, list)):
+        return batch[0]
+    return batch
 
 
 def imgs_to_gaussian_pts(model, image_generator, N, neigvals=100, p_outliers=10):
@@ -20,16 +27,16 @@ def imgs_to_gaussian_pts(model, image_generator, N, neigvals=100, p_outliers=10)
     Make sure neigvals<<M^2.
     """
 
-    # M = np.prod(next(image_generator)[0].shape[1:])
-    M = np.prod(next(image_generator).shape[1:])
+    first_batch = _unwrap_batch(next(image_generator))
+    image_generator = itertools.chain([first_batch], image_generator)
+    M = np.prod(first_batch.shape[1:])
     neigvals = min(M, N, 100)
     # print("imgs_to_gaussian_pts: M=", M, ", N=", N)
 
     def get_n_images(data_generator, n):
         images = []
         while len(images) < n:
-            # img_batch = next(data_generator)[0]
-            img_batch = next(data_generator)
+            img_batch = _unwrap_batch(next(data_generator))
             for img in img_batch:
                 images.append(img)
                 if len(images) == n:

@@ -11,6 +11,7 @@ flow_model.compile(optimizer=Adam(learning_rate=0.0001), metrics=[NegLogLikeliho
 flow_model.fit(train_data_generator, epochs=num_epochs, steps_per_epoch=steps_per_epoch)
 """
 
+import os
 from datetime import datetime
 import numpy as np
 import tensorflow as tf
@@ -18,12 +19,46 @@ import tensorflow_probability as tfp
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.optimizers.schedules import ExponentialDecay
-from tensorflow.python.keras.callbacks import TensorBoard
+from tensorflow.keras.callbacks import TensorBoard
+import mlflow
 
 from file_utils import infinite_generator
 
 tfb = tfp.bijectors
 tfd = tfp.distributions
+
+
+def _flatten_params(params):
+    flat_params = {}
+    if not params:
+        return flat_params
+    for key, value in params.items():
+        if isinstance(value, (int, float, str, bool)) or value is None:
+            flat_params[key] = value
+        else:
+            flat_params[key] = repr(value)
+    return flat_params
+
+
+class MLflowLoggingCallback(tf.keras.callbacks.Callback):
+    """Callback to mirror Keras training metrics into MLflow."""
+
+    def on_epoch_end(self, epoch, logs=None):
+        if not logs:
+            return
+        metrics = {}
+        for key, value in logs.items():
+            if value is None:
+                continue
+            if np.isscalar(value):
+                metrics[key] = float(value)
+            else:
+                try:
+                    metrics[key] = float(value)
+                except (TypeError, ValueError):
+                    continue
+        if metrics:
+            mlflow.log_metrics(metrics, step=epoch)
 
 
 class ShiftAndLogScaleCNN(tf.keras.layers.Layer):
@@ -49,8 +84,9 @@ class ShiftAndLogScaleCNN(tf.keras.layers.Layer):
         layers.append(tf.keras.layers.Dense(2 * output_dim, activation=None))
         self.nn = tf.keras.Sequential(layers)
 
-    def call(self, x, output_units, **kwargs):
-        shift_log_scale = self.nn(x)
+    def call(self, inputs, output_units=None, **kwargs):
+        del output_units
+        shift_log_scale = self.nn(inputs)
         shift, log_scale = tf.split(shift_log_scale, num_or_size_splits=2, axis=-1)
         return shift, log_scale
 
@@ -70,23 +106,27 @@ class ShiftAndLogScaleDense(tf.keras.layers.Layer):
         leakyrelualpha=0.01
     ):
         super().__init__(name=name)
-        layers = []
+        self.output_dim = int(output_dim)
+        dense_layers = []
+        hidden_layers = hidden_layers or []
         for nodes in hidden_layers:
-            layers.append(
+            nodes = int(nodes)
+            dense_layers.append(
                 tf.keras.layers.Dense(
-                    nodes,
+                    units=nodes,
                     kernel_initializer=kernel_initializer,
                     kernel_regularizer=kernel_regularizer
                 )
             )
-            layers.append(
+            dense_layers.append(
                 tf.keras.layers.LeakyReLU(alpha=leakyrelualpha)
             )
-        layers.append(tf.keras.layers.Dense(2 * output_dim, activation=None))
-        self.nn = tf.keras.Sequential(layers)
+        dense_layers.append(tf.keras.layers.Dense(int(2 * self.output_dim), activation=None))
+        self.nn = tf.keras.Sequential(dense_layers)
 
-    def call(self, x, output_units, **kwargs):
-        shift_log_scale = self.nn(x)
+    def call(self, inputs, output_units=None, **kwargs):
+        del output_units
+        shift_log_scale = self.nn(inputs)
         shift, log_scale = tf.split(shift_log_scale, num_or_size_splits=2, axis=-1)
         return shift, log_scale
 
@@ -139,17 +179,26 @@ class FlowModel(tf.keras.Model):
                     kernel_initializer=tf.keras.initializers.GlorotUniform(),
                     kernel_regularizer=tf.keras.regularizers.l2(reg_level),
                 )
+
+                def shift_log_scale_fn_factory(layer):
+                    def shift_log_scale_fn(x, output_units, **unused_kwargs):
+                        return layer(x, output_units=output_units)
+                    return shift_log_scale_fn
+
+                shift_log_scale_fn = shift_log_scale_fn_factory(shift_log_scale_layer)
+                self.shift_and_log_scale_layers.append(shift_log_scale_layer)
                 flow_step_list.append(
                     tfb.RealNVP(
                         num_masked=flat_image_size // 2,
                         # (using own shift_and_log_scale_fn to experiment/expand,
                         # but similar to tfb.real_nvp_default_template)
-                        shift_and_log_scale_fn=shift_log_scale_layer,
+                        shift_and_log_scale_fn=shift_log_scale_fn,
                         # shift_and_log_scale_fn=tfb.real_nvp_default_template(
                         #     hidden_layers=hidden_layers,
                         #     # kernel_initializer=tf.keras.initializers.GlorotUniform(),
                         #     # kernel_regularizer=tf.keras.regularizers.l2(reg_level),
                         # ),
+                        ##log_scale_clip_fn=lambda log_s: tf.clip_by_value(log_s, -5.0, 5.0),
                         validate_args=validate_args,
                         name="{}_{}_RealNVP".format(layer_name, i),
                     )
@@ -224,14 +273,14 @@ class FlowModel(tf.keras.Model):
 
     @tf.function
     def call(self, inputs):
-        """Images to gaussian points"""
+        """Images to Gaussian latent points."""
         inputs = tf.reshape(inputs, (-1, np.prod(inputs.shape[1:])))
-        return self.flow.bijector.forward(inputs)
+        return self.flow.bijector.inverse(inputs)
 
     @tf.function
     def inverse(self, outputs):
-        """Gaussian points to images."""
-        return self.flow.bijector.inverse(outputs)
+        """Gaussian latent points to images."""
+        return self.flow.bijector.forward(outputs)
 
     @tf.function
     def train_step(self, data):
@@ -252,7 +301,8 @@ class FlowModel(tf.keras.Model):
                 tf.print("NaN or Inf detected in log_prob")
 
             neg_log_likelihood = -tf.reduce_mean(log_prob)
-            gradients = tape.gradient(neg_log_likelihood, self.flow.trainable_variables)
+            trainable_vars = self.trainable_variables
+            gradients = tape.gradient(neg_log_likelihood, trainable_vars)
 
             if tf.reduce_any(
                 [
@@ -270,7 +320,11 @@ class FlowModel(tf.keras.Model):
                 # gradients = [tf.clip_by_value(g, -1.0, 1.0) for g in gradients]  # gradient direction can change
             postclip_grad_norm = tf.linalg.global_norm(gradients)
 
-        self.optimizer.apply_gradients(zip(gradients, self.flow.trainable_variables))
+        grads_and_vars = [
+            (g, v) for g, v in zip(gradients, trainable_vars) if g is not None
+        ]
+        if grads_and_vars:
+            self.optimizer.apply_gradients(grads_and_vars)
 
         # Assemble and output progress values to log
         bits_per_dim_divisor = np.prod(self.image_shape) * tf.math.log(2.0)
@@ -288,8 +342,10 @@ class FlowModel(tf.keras.Model):
             outdict.update({
                 "grad_norm": postclip_grad_norm,
             })
-        if isinstance(self.optimizer.lr, tf.keras.optimizers.schedules.LearningRateSchedule):
-            current_lr = self.optimizer.lr(self.optimizer.iterations)
+        if isinstance(
+            self.optimizer.learning_rate, tf.keras.optimizers.schedules.LearningRateSchedule
+        ):
+            current_lr = self.optimizer.learning_rate(self.optimizer.iterations)
             outdict.update({"learning_rate": current_lr})
         return outdict
 
@@ -329,6 +385,42 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
 
         flow_model.compile(optimizer=Adam(learning_rate=lrate))
 
+        tracking_tool = training_params.get("tracking_tool")
+        valid_tools = {None, "tensorboard", "mlflow"}
+        if tracking_tool not in valid_tools:
+            raise ValueError(
+                f"Unsupported tracking_tool '{tracking_tool}'. Expected one of {valid_tools - {None}} or None."
+            )
+        tracking_port = training_params.get("tracking_port")
+        mlflow_run_started = False
+        if tracking_tool == "mlflow":
+            if tracking_port:
+                mlflow.set_tracking_uri(f"http://localhost:{tracking_port}")
+            experiment_name = training_params.get(
+                "tracking_expt_name", run_params.get("dataset", "flow_model_training")
+            )
+            mlflow.set_experiment(experiment_name)
+            dataset = run_params.get("dataset", "flow_model_run")
+            num_gen = run_params.get("num_gen_sims", "NA")
+            run_name = f"{dataset}_{num_gen}"
+            if mlflow.active_run():
+                mlflow.end_run()
+            mlflow.start_run(run_name=run_name)
+            mlflow.log_params(
+                _flatten_params(
+                    {
+                        **training_params,
+                        **model_arch_params,
+                        "model_dir": run_params.get("model_dir"),
+                        "tracking_tool": "mlflow",
+                    }
+                )
+            )
+            active_run = mlflow.active_run()
+            if active_run:
+                run_params["mlflow_run_id"] = active_run.info.run_id
+            mlflow_run_started = True
+
         callbacks = []
         if training_params["early_stopping_patience"] > 0:
             callbacks.append(
@@ -338,10 +430,20 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
                     restore_best_weights=True,
                 )
             )
-        if run_params["use_tensorboard"]:
+        if tracking_tool == "tensorboard":
             log_dir = f"./logs/train/{datetime.now().strftime('%Y%m%d-%H%M%S')}"
             callbacks.append(
                 TensorBoard(log_dir=log_dir, histogram_freq=1, write_graph=False)
+            )
+            if tracking_port:
+                print(
+                    f"TensorBoard logs: {log_dir} (launch via `tensorboard --logdir {log_dir} --port {tracking_port}`)"
+                )
+            else:
+                print(f"TensorBoard logs: {log_dir}")
+        elif tracking_tool == "mlflow":
+            callbacks.append(
+                MLflowLoggingCallback()
             )
         infinite_train_generator = infinite_generator(train_gen)
         history = flow_model.fit(
@@ -353,12 +455,17 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             callbacks=callbacks,
         )
         print("Done training model.", flush=True)
-        flow_model.save_weights(run_params["model_dir"] + "/model_weights")
+        os.makedirs(run_params["model_dir"], exist_ok=True)
+        weights_path = os.path.join(run_params["model_dir"], "model_weights.weights.h5")
+        flow_model.save_weights(weights_path)
         print("Model weights saved to file.\n", flush=True)
+        if mlflow_run_started:
+            run_params["mlflow_run_open"] = True
     else:
         print(
             f"Loading model weights from file in {run_params['model_dir']}.\n", flush=True
         )
-        flow_model.load_weights(run_params["model_dir"] + "/model_weights")
+        weights_path = os.path.join(run_params["model_dir"], "model_weights.weights.h5")
+        flow_model.load_weights(weights_path)
 
     return flow_model, history

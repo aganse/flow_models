@@ -375,9 +375,13 @@ def infinite_generator(generator):
     infinite_train_generator = file_utils.infinite_generator(train_generator)
     flow_model.fit(infinite_train_generator, epochs=num_epochs, ...)
     """
+    generator = iter(generator)
     while True:
-        for batch in generator:
+        batch = next(generator)
+        if isinstance(batch, tuple):
             yield batch
+        else:
+            yield (batch,)
 
 
 def get_data_generator(

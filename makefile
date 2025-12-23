@@ -1,6 +1,7 @@
 # Makefile for flow_models
 
-export DEVICE=gpu
+export DEVICE=cpu
+export PYTHON_BIN=python3.12
 # Environment variables AWS_ACCT_ID and AWS_REGION are expected to exist
 
 
@@ -18,9 +19,9 @@ version := v$(shell grep -E 'current_version\s*=' setup.cfg | cut -d '=' -f2 | t
 
 create-env:
 ifeq ($(check_repo_root), 1)
-	@next_venv=$$(python3 -c "import os; max_val = max([int(d.replace('.venv', '')) for d in os.listdir('.') if d.startswith('.venv') and d.replace('.venv', '').isdigit()] + [0]); print(f'.venv{max_val+1}')"); \
+	@next_venv=$$($(PYTHON_BIN) -c "import os; max_val = max([int(d.replace('.venv', '')) for d in os.listdir('.') if d.startswith('.venv') and d.replace('.venv', '').isdigit()] + [0]); print(f'.venv{max_val+1}')"); \
 	echo "Creating/installing new python env ${PWD}/$$next_venv"; \
-	bash -c "python3 -m venv $$next_venv && source $${next_venv}/bin/activate && pip install -r requirements.txt"
+	bash -c "$(PYTHON_BIN) -m venv $$next_venv && source $${next_venv}/bin/activate && pip install -r requirements.txt"
 else
 	@echo "Not in root directory of flow_models repo."
 endif
