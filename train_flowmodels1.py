@@ -21,7 +21,7 @@ run_params = {
     "do_train": True,  # true = training, false = inference w existing model in model_dir
 }
 training_params = {
-    "num_epochs": 10,
+    "num_epochs": 30,
     "batch_size": 256,
     "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
     "learning_rate": 0.0001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
@@ -30,7 +30,7 @@ training_params = {
     #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
     "early_stopping_patience": 10,  # value <=0 turns off early_stopping
     # choose 600000 data points because current model arch has 534,544 params:
-    "num_data_input": 600000,  # num training data pts or images (whether pts or files)
+    "num_data_input": 100000,  # num training data pts or images (whether pts or files)
     "augmentation_factor": 1,  # set >1 to have augmentation turned on
     "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
     "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
@@ -62,11 +62,12 @@ if run_params["dataset"] in ["moons", "gmm", "mvn"]:
     input_data_test = np.concatenate(
         [_unwrap_batch(next(train_generator)) for _ in range(20)], axis=0
     )
+    datain_plot_path = run_params["output_dir"] + "/test_input_dataspace.png"
     utils.plot_pts_2d(
         input_data_test,
         main_pts_label="original train pts",
         side="data",
-        plotfile=run_params["output_dir"] + "/test_input_dataspace.png",
+        plotfile=datain_plot_path,
     )
     print("test_input_dataspace.png written.")
 
@@ -105,18 +106,18 @@ sim_pts = utils.generate_sim_pts(
     regen_pts=mapped_training_pts,
 )
 # data space plot:
-data_plot_path = run_params["output_dir"] + "/test_output_dataspace.png"
+dataout_plot_path = run_params["output_dir"] + "/test_output_dataspace.png"
 utils.plot_pts_2d(
     sim_pts,
     main_pts_label="mapped sim pts",
     side="data",
-    plotfile=data_plot_path,
+    plotfile=dataout_plot_path,
 )
 print("test_output_dataspace.png written.")
 if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_open"):
     import mlflow
 
-    for artifact_path in [latent_plot_path, data_plot_path]:
+    for artifact_path in [latent_plot_path, datain_plot_path, dataout_plot_path]:
         mlflow.log_artifact(artifact_path, artifact_path="plots")
     mlflow.end_run()
     run_params["mlflow_run_open"] = False

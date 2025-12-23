@@ -406,14 +406,17 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             if mlflow.active_run():
                 mlflow.end_run()
             mlflow.start_run(run_name=run_name)
+            params_for_logging = {
+                **run_params,
+                **training_params,
+                **model_arch_params,
+                "tracking_tool": tracking_tool,
+            }
+            # Avoid logging artifacts-related flags that aren't parameters.
+            params_for_logging.pop("output_dir", None)
             mlflow.log_params(
                 _flatten_params(
-                    {
-                        **training_params,
-                        **model_arch_params,
-                        "model_dir": run_params.get("model_dir"),
-                        "tracking_tool": "mlflow",
-                    }
+                    params_for_logging
                 )
             )
             active_run = mlflow.active_run()
