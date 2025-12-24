@@ -16,12 +16,12 @@ def _unwrap_batch(batch):
 run_params = {
     "output_dir": "output",
     "model_dir": "models/flowmodels1",
-    "dataset": "gmm",
+    "dataset": "moons",  # "moons", "gmm", "mvn"
     "num_gen_sims": 1000,  # number of new simulated data to generate
     "do_train": True,  # true = training, false = inference w existing model in model_dir
 }
 training_params = {
-    "num_epochs": 30,
+    "num_epochs": 20,
     "batch_size": 256,
     "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
     "learning_rate": 0.0001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
@@ -29,8 +29,8 @@ training_params = {
     #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
     #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
     "early_stopping_patience": 10,  # value <=0 turns off early_stopping
-    # choose 600000 data points because current model arch has 534,544 params:
-    "num_data_input": 100000,  # num training data pts or images (whether pts or files)
+    # note current model arch has 534,544 params:
+    "num_data_input": 50000,  # num training data pts or images (whether pts or files)
     "augmentation_factor": 1,  # set >1 to have augmentation turned on
     "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
     "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"

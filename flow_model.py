@@ -11,6 +11,7 @@ flow_model.compile(optimizer=Adam(learning_rate=0.0001), metrics=[NegLogLikeliho
 flow_model.fit(train_data_generator, epochs=num_epochs, steps_per_epoch=steps_per_epoch)
 """
 
+import io
 import os
 from datetime import datetime
 import numpy as np
@@ -38,6 +39,31 @@ def _flatten_params(params):
         else:
             flat_params[key] = repr(value)
     return flat_params
+
+
+def _capture_and_save_summary(model, image_shape, output_dir, log_to_mlflow=False):
+    """Generate model summary text, save to file, and optionally log to MLflow."""
+    try:
+        dummy_input = tf.zeros((1, *image_shape), dtype=tf.float32)
+        _ = model(dummy_input)
+    except Exception:
+        pass
+
+    stream = io.StringIO()
+    model.summary(print_fn=lambda x: stream.write(x + "\n"))
+    summary_text = stream.getvalue()
+
+    os.makedirs(output_dir, exist_ok=True)
+    summary_path = os.path.join(output_dir, "flow_model_summary.txt")
+    with open(summary_path, "w", encoding="utf-8") as summary_file:
+        summary_file.write(summary_text)
+
+    print(summary_text, end="")
+
+    if log_to_mlflow and mlflow.active_run():
+        mlflow.log_artifact(summary_path, artifact_path="reports")
+
+    return summary_path
 
 
 class MLflowLoggingCallback(tf.keras.callbacks.Callback):
@@ -76,19 +102,22 @@ class ShiftAndLogScaleCNN(tf.keras.layers.Layer):
         leakyrelualpha=0.01
     ):
         super().__init__(name=name)
-        layers = []
+        self.output_dim = int(output_dim)
+        conv_layers = []
+        layers = layers or []
         for filters in layers:
-            layers.append(tf.keras.layers.Conv2D(filters=filters, kernel_size=3, padding="same"))
-            layers.append(tf.keras.layers.BatchNormalization())
-            layers.append(tf.keras.layers.LeakyReLU(alpha=leakyrelualpha))
-        layers.append(tf.keras.layers.Dense(2 * output_dim, activation=None))
-        self.nn = tf.keras.Sequential(layers)
+            conv_layers.append(tf.keras.layers.Conv2D(filters=filters, kernel_size=3, padding="same"))
+            conv_layers.append(tf.keras.layers.BatchNormalization())
+            conv_layers.append(tf.keras.layers.LeakyReLU(alpha=leakyrelualpha))
+        conv_layers.append(tf.keras.layers.Dense(int(2 * self.output_dim), activation=None))
+        self.nn = tf.keras.Sequential(conv_layers)
 
     def call(self, inputs, output_units=None, **kwargs):
         del output_units
-        shift_log_scale = self.nn(inputs)
-        shift, log_scale = tf.split(shift_log_scale, num_or_size_splits=2, axis=-1)
-        return shift, log_scale
+        return self.nn(inputs)
+
+    def compute_output_shape(self, input_shape):
+        return tf.TensorShape((input_shape[0], 2 * self.output_dim))
 
 
 class ShiftAndLogScaleDense(tf.keras.layers.Layer):
@@ -126,9 +155,10 @@ class ShiftAndLogScaleDense(tf.keras.layers.Layer):
 
     def call(self, inputs, output_units=None, **kwargs):
         del output_units
-        shift_log_scale = self.nn(inputs)
-        shift, log_scale = tf.split(shift_log_scale, num_or_size_splits=2, axis=-1)
-        return shift, log_scale
+        return self.nn(inputs)
+
+    def compute_output_shape(self, input_shape):
+        return tf.TensorShape((input_shape[0], 2 * self.output_dim))
 
 
 class FlowModel(tf.keras.Model):
@@ -182,7 +212,9 @@ class FlowModel(tf.keras.Model):
 
                 def shift_log_scale_fn_factory(layer):
                     def shift_log_scale_fn(x, output_units, **unused_kwargs):
-                        return layer(x, output_units=output_units)
+                        outputs = layer(x, output_units=output_units)
+                        shift, log_scale = tf.split(outputs, num_or_size_splits=2, axis=-1)
+                        return shift, log_scale
                     return shift_log_scale_fn
 
                 shift_log_scale_fn = shift_log_scale_fn_factory(shift_log_scale_layer)
@@ -360,8 +392,6 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         grad_norm_thresh=training_params["grad_norm_thresh"]
     )
     flow_model.build(input_shape=(None, *model_arch_params["image_shape"]))
-    flow_model.summary()
-    # flow_model.print_vars()
     print("")
 
     if run_params["do_train"]:
@@ -462,6 +492,14 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         weights_path = os.path.join(run_params["model_dir"], "model_weights.weights.h5")
         flow_model.save_weights(weights_path)
         print("Model weights saved to file.\n", flush=True)
+        summary_path = _capture_and_save_summary(
+            flow_model,
+            model_arch_params["image_shape"],
+            run_params["output_dir"],
+            log_to_mlflow=mlflow_run_started,
+        )
+        if mlflow_run_started:
+            run_params["model_summary_path"] = summary_path
         if mlflow_run_started:
             run_params["mlflow_run_open"] = True
     else:
@@ -470,5 +508,11 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         )
         weights_path = os.path.join(run_params["model_dir"], "model_weights.weights.h5")
         flow_model.load_weights(weights_path)
+        _capture_and_save_summary(
+            flow_model,
+            model_arch_params["image_shape"],
+            run_params["output_dir"],
+            log_to_mlflow=False,
+        )
 
     return flow_model, history

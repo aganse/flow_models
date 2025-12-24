@@ -156,6 +156,16 @@ def plot_pts_2d(
                 va="center",
             )
 
+    # autoset the plot limits to smallest square containing all points
+    ax.set_aspect('equal', adjustable='box')
+    ax.autoscale()
+    m = max(
+        abs(ax.get_xlim()[0]), abs(ax.get_xlim()[1]),
+        abs(ax.get_ylim()[0]), abs(ax.get_ylim()[1]),
+    )
+    ax.set_xlim(-m, m)
+    ax.set_ylim(-m, m)
+
     # put axis outside plot on right side:
     ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
 
