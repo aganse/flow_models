@@ -4,29 +4,39 @@ import utils
 from file_utils import get_data_generator, image_files_to_data_generator
 from flow_model import default_training_sequence
 
-
 warnings.filterwarnings("ignore", category=UserWarning)  # TFP spews a number of these
+
+
+def _unwrap_batch(batch):
+    return batch[0] if isinstance(batch, (tuple, list)) else batch
+
 
 run_params = {
     "output_dir": "output",
     "model_dir": "models/flowmodels2/cats_256x256new",
     "dataset": "cats",
-    "images_path": "s3://mybucket",  # (substitute your own s3 bucket name here)
     "num_gen_sims": 10,  # number of new simulated images to generate
     "do_train": True,  # true = training, false = inference w existing model in model_dir
-    "use_tensorboard": True,
+    "images_path": "s3://mybucket",  # (substitute your own s3 bucket name here)
     "do_imgs_and_points": True,  # generate scatterplots, sim images, etc:  not dataset specific
     "do_interp": False,  # interp sim images between some training points:  cat dataset specific
 }
 training_params = {
-    "num_epochs": 10,
-    "batch_size": 128,
-    "reg_level": 0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-    "learning_rate": 0.00001,  # scaler -> constant rate; or list-of-3 -> exponential decay, ie:
-    # "learning_rate": [0.001, 500, 0.95],  # [initial_rate, decay_steps, decay_rate]
-    "early_stopping_patience": 0,  # value <=0 turns off early_stopping
-    "num_data_input": 5600,  # num training data pts or images (whether pts or files)
-    "augmentation_factor": 2,  # set >1 to have augmentation turned on
+    "num_epochs": 20,
+    "batch_size": 256,
+    "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
+    "learning_rate": 0.0001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+    # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
+    #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
+    #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
+    "early_stopping_patience": 10,  # value <=0 turns off early_stopping
+    # note current model arch has 534,544 params:
+    "num_data_input": 50000,  # num training data pts or images (whether pts or files)
+    "augmentation_factor": 1,  # set >1 to have augmentation turned on
+    "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
+    "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
+    "tracking_port": 5000,  # typ 6006 for tensorboard and 5000 for mlflow
+    "tracking_expt_name": "flow_models2",
 }
 model_arch_params = {
     "image_shape": (256, 256, 3),  # (height, width, channels) of images
@@ -36,6 +46,7 @@ model_arch_params = {
     "validate_args": True,
 }
 # List the param settings:
+print("")
 utils.print_run_params(**run_params, **training_params, **model_arch_params)
 
 
@@ -58,7 +69,7 @@ print("train_generator test: shape of one batch: ", next(train_generator).shape,
 
 # Train the model
 # ---------------
-flow_model = default_training_sequence(
+flow_model, history = default_training_sequence(
     train_generator, run_params, training_params, model_arch_params
 )
 
@@ -77,9 +88,12 @@ if run_params["do_imgs_and_points"]:
         flow_model, other_generator, 9
     )
     print("Now plotting 2D projection of those training points.")
+    trainpts_latent_plot_path = run_params["output_dir"] + "/training_points_latentspace.png"
     utils.plot_pts_2d(
         mapped_training_pts,
-        plotfile=run_params["output_dir"] + "/training_points.png",
+        main_pts_label="mapped train pts",
+        side="latent",
+        plotfile=trainpts_latent_plot_path,
         mean=mean,
         sim_pts=top_outliers,
         sim_pts_label="top outliers",
@@ -87,57 +101,64 @@ if run_params["do_imgs_and_points"]:
         other_pts_label="close to mean",
         num_regen=5,
     )
+    print("training_points_latentspace.png written.")
+
     print(f"Now regenerating {run_params['num_gen_sims']} outlier images...")
+    outliers_images_path = run_params["output_dir"] + "/outlier_image"
     outlier_pts = utils.generate_imgs_in_batches(
         flow_model,
         run_params["num_gen_sims"],
         mean,
         reduced_cov,
         pca,
-        filename=run_params["output_dir"] + "/outlier_image",
+        filename=outliers_images_path,
         batch_size=5,
         regen_pts=top_outliers,
         add_plot_num=True,
     )
     print(f"Now regenerating {run_params['num_gen_sims']} inlier images...")
+    inliers_images_path = run_params["output_dir"] + "/inlier_image"
     inlier_pts = utils.generate_imgs_in_batches(
         flow_model,
         run_params["num_gen_sims"],
         mean,
         reduced_cov,
         pca,
-        filename=training_params["output_dir"] + "/inlier_image",
+        filename=inliers_images_path,
         batch_size=5,
         regen_pts=closest_to_mean,
         add_plot_num=True,
     )
     print(f"Now regenerating {run_params['num_gen_sims']} training images...")
+    regen_images_path = run_params["output_dir"] + "/regen_image"
     regen_pts = utils.generate_imgs_in_batches(
         flow_model,
         run_params["num_gen_sims"],
         mean,
         reduced_cov,
         pca,
-        filename=run_params["output_dir"] + "/regen_image",
+        filename=regen_images_path,
         batch_size=5,
         regen_pts=mapped_training_pts[14:],
         add_plot_num=True,
     )
     print(f"Now generating {run_params['num_gen_sims']} simulated images...")
+    sim_images_path = run_params["output_dir"] + "/sim_image"
     sim_pts = utils.generate_imgs_in_batches(
         flow_model,
         run_params["num_gen_sims"],
         mean,
         reduced_cov / 4,
         pca,
-        filename=run_params["output_dir"] + "/sim_image",
+        filename=sim_images_path,
         batch_size=5,
         add_plot_num=True,
     )
     print("Now plotting 2D projection of training+sim+other points.")
+    compare_images_path = run_params["output_dir"] + "/compare_points_2d.png"
     utils.plot_pts_2d(
         mapped_training_pts,
-        plotfile=run_params["output_dir"] + "/compare_points_2d.png",
+        plotfile=compare_images_path,
         mean=mean,
         sim_pts=sim_pts,
         other_pts=other_pts,
@@ -167,13 +188,28 @@ if run_params["do_interp"]:
     gaussian_points = utils.interpolate_between_points(
         gaussian_points, 4, path="euclidean"
     )
+    interp_images_path = run_params["output_dir"] + "/interp_image"
     _ = utils.generate_imgs_in_batches(
         flow_model,
         4,
         None,
         None,
         None,
-        filename=run_params["output_dir"] + "/gen_image",
+        filename=interp_images_path,
         batch_size=4,
         regen=gaussian_points,
     )
+
+if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_open"):
+    import mlflow
+
+    plots_list = [
+        trainpts_latent_plot_path, outliers_images_path, inliers_images_path,
+        regen_images_path, sim_images_path, compare_images_path
+    ]
+    if run_params["do_interp"]:
+        plots_list.append(interp_images_path)
+    for artifact_path in plots_list:
+        mlflow.log_artifact(artifact_path, artifact_path="plots")
+    mlflow.end_run()
+    run_params["mlflow_run_open"] = False
