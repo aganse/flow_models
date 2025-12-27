@@ -413,7 +413,10 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             print("train.py: error: learning_rate not scalar or list of length 3.")
             quit()
 
-        flow_model.compile(optimizer=Adam(learning_rate=lrate))
+        flow_model.compile(
+            optimizer=Adam(learning_rate=lrate),
+            jit_compile=training_params["jit_compile"],
+        )
 
         tracking_tool = training_params.get("tracking_tool")
         valid_tools = {None, "tensorboard", "mlflow"}

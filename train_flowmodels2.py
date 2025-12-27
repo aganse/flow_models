@@ -17,7 +17,7 @@ run_params = {
     "dataset": "cats",
     "num_gen_sims": 10,  # number of new simulated images to generate
     "do_train": True,  # true = training, false = inference w existing model in model_dir
-    "images_path": "s3://mybucket",  # (substitute your own s3 bucket name here)
+    "images_path": "s3://aganse-images",  # (substitute your own s3 bucket name here)
     "do_imgs_and_points": True,  # generate scatterplots, sim images, etc:  not dataset specific
     "do_interp": False,  # interp sim images between some training points:  cat dataset specific
 }
