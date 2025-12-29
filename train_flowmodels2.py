@@ -23,17 +23,19 @@ run_params = {
 }
 training_params = {
     "num_epochs": 20,
-    "batch_size": 256,
+    "batch_size": 8,
     "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-    "learning_rate": 0.0001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+    "learning_rate": 0.00001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
     # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
     #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
     #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
     "early_stopping_patience": 10,  # value <=0 turns off early_stopping
     # note current model arch has 534,544 params:
-    "num_data_input": 50000,  # num training data pts or images (whether pts or files)
+    "num_data_input": 5000,  # num training data pts or images (whether pts or files)
     "augmentation_factor": 1,  # set >1 to have augmentation turned on
     "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
+    "jit_compile": False,  # boolean, affects GPU runs: false=slower but won't
+                           # crash on GPU runs (irrelevant on CPU-only runs)
     "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
     "tracking_port": 5000,  # typ 6006 for tensorboard and 5000 for mlflow
     "tracking_expt_name": "flow_models2",
