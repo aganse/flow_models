@@ -16,7 +16,7 @@ def _unwrap_batch(batch):
 run_params = {
     "output_dir": "output",  # local artifacts storage area before possibly logging to mlflow
     "model_dir": "models/flowmodels1",  # local model storage area before possibly logging to mlflow
-    "dataset": "gmm",  # "moons", "gmm", "mvn"
+    "dataset": "moons",  # "moons", "gmm", "mvn"
     "num_gen_sims": 1000,  # number of new simulated data to generate
     "do_train": True,  # true = training, false = inference w existing model in model_dir
 }
@@ -31,9 +31,9 @@ training_params = {
     "early_stopping_patience": 10,  # value <=0 turns off early_stopping
     # note current model arch has 534,544 params:
     "num_data_input": 50000,  # num training data pts or images (whether pts or files)
-    "augmentation_factor": 10,  # set >1 to have augmentation turned on
+    "augmentation_factor": 1,  # set >1 to have augmentation turned on
     "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
-    "jit_compile": False,  # boolean, affects GPU runs: false=slower but won't
+    "jit_compile": True,  # boolean, affects GPU runs: false=slower but won't
                            # crash on GPU runs (irrelevant on CPU-only runs)
     "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
     "tracking_port": 5000,  # typ 6006 for tensorboard and 5000 for mlflow
@@ -118,8 +118,8 @@ utils.plot_pts_2d(
 print("test_output_dataspace.png written.")
 if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_open"):
     import mlflow
-
     for artifact_path in [latent_plot_path, datain_plot_path, dataout_plot_path]:
         mlflow.log_artifact(artifact_path, artifact_path="plots")
+    mlflow.log_artifact(run_params["model_dir"], artifact_path="model")
     mlflow.end_run()
     run_params["mlflow_run_open"] = False

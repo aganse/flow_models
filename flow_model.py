@@ -96,7 +96,7 @@ class ShiftAndLogScaleCNN(tf.keras.layers.Layer):
         self,
         output_dim,
         name=None,
-        layers=None,
+        hidden_layers=None,
         kernel_initializer="glorot_uniform",
         kernel_regularizer=None,
         leakyrelualpha=0.01
@@ -104,7 +104,7 @@ class ShiftAndLogScaleCNN(tf.keras.layers.Layer):
         super().__init__(name=name)
         self.output_dim = int(output_dim)
         conv_layers = []
-        layers = layers or []
+        layers = hidden_layers or []
         for filters in layers:
             conv_layers.append(tf.keras.layers.Conv2D(filters=filters, kernel_size=3, padding="same"))
             conv_layers.append(tf.keras.layers.BatchNormalization())
@@ -201,8 +201,8 @@ class FlowModel(tf.keras.Model):
             layer_name = "Flow_step"
             flow_step_list = []
             for i in range(flow_steps):
-                shift_log_scale_layer = ShiftAndLogScaleCNN(
-                # shift_log_scale_layer = ShiftAndLogScaleDense(
+                #shift_log_scale_layer = ShiftAndLogScaleCNN(
+                shift_log_scale_layer = ShiftAndLogScaleDense(
                     output_dim=flat_image_size // 2,
                     name="{}_{}_shift_log_scale_layer".format(layer_name, i),
                     hidden_layers=hidden_layers,
@@ -224,12 +224,12 @@ class FlowModel(tf.keras.Model):
                         num_masked=flat_image_size // 2,
                         # (using own shift_and_log_scale_fn to experiment/expand,
                         # but similar to tfb.real_nvp_default_template)
-                        ##shift_and_log_scale_fn=shift_log_scale_fn,
-                        shift_and_log_scale_fn=tfb.real_nvp_default_template(
-                            hidden_layers=hidden_layers,
+                        shift_and_log_scale_fn=shift_log_scale_fn,
+                        #shift_and_log_scale_fn=tfb.real_nvp_default_template(
+                        #    hidden_layers=hidden_layers,
                             # kernel_initializer=tf.keras.initializers.GlorotUniform(),
                             # kernel_regularizer=tf.keras.regularizers.l2(reg_level),
-                        ),
+                        #),
                         ##log_scale_clip_fn=lambda log_s: tf.clip_by_value(log_s, -5.0, 5.0),
                         validate_args=validate_args,
                         name="{}_{}_RealNVP".format(layer_name, i),
@@ -327,22 +327,20 @@ class FlowModel(tf.keras.Model):
         with tf.GradientTape() as tape:
 
             log_prob = self.flow.log_prob(images)
-            if tf.reduce_any(tf.math.is_nan(log_prob)) or tf.reduce_any(
-                tf.math.is_inf(log_prob)
-            ):
-                tf.print("NaN or Inf detected in log_prob")
+            tf.debugging.assert_all_finite(
+                log_prob, "NaN or Inf detected in log_prob"
+            )
 
             neg_log_likelihood = -tf.reduce_mean(log_prob)
             trainable_vars = self.trainable_variables
             gradients = tape.gradient(neg_log_likelihood, trainable_vars)
 
-            if tf.reduce_any(
-                [
-                    tf.reduce_any(tf.math.is_nan(g)) or tf.reduce_any(tf.math.is_inf(g))
-                    for g in gradients
-                ]
-            ):
-                tf.print("NaN or Inf detected in gradients")
+            for grad in gradients:
+                if grad is None:
+                    continue
+                tf.debugging.assert_all_finite(
+                    grad, "NaN or Inf detected in gradients"
+                )
 
             # Gradient clipping:
             if self.grad_norm_thresh is not None:
@@ -492,15 +490,21 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         )
         print("Done training model.", flush=True)
         os.makedirs(run_params["model_dir"], exist_ok=True)
+        # save the model weights:
         weights_path = os.path.join(run_params["model_dir"], "model_weights.weights.h5")
         flow_model.save_weights(weights_path)
         print("Model weights saved to file.\n", flush=True)
+        # save the txt summary description of model arch:
         summary_path = _capture_and_save_summary(
             flow_model,
             model_arch_params["image_shape"],
-            run_params["output_dir"],
+            run_params["model_dir"],
             log_to_mlflow=mlflow_run_started,
         )
+        # lastly save the model architecture to file:
+        arch_path = os.path.join(run_params["model_dir"], "model_arch.json")
+        with open(arch_path, "w") as f:
+            f.write(flow_model.to_json())
         if mlflow_run_started:
             run_params["model_summary_path"] = summary_path
         if mlflow_run_started:

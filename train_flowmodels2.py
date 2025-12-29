@@ -1,6 +1,8 @@
+import json
+import os
+import utils
 import warnings
 
-import utils
 from file_utils import get_data_generator, image_files_to_data_generator
 from flow_model import default_training_sequence
 
@@ -17,13 +19,14 @@ run_params = {
     "dataset": "cats",
     "num_gen_sims": 10,  # number of new simulated images to generate
     "do_train": True,  # true = training, false = inference w existing model in model_dir
-    "images_path": "s3://aganse-images",  # (substitute your own s3 bucket name here)
+    "images_path": "/storage/data/afhq",  # local filesys dir containing train/ and val/ subdirs
+    #"images_path": "s3://mybucket",  # this works but is pretty slow, needs some optimizing
     "do_imgs_and_points": True,  # generate scatterplots, sim images, etc:  not dataset specific
     "do_interp": False,  # interp sim images between some training points:  cat dataset specific
 }
 training_params = {
     "num_epochs": 20,
-    "batch_size": 8,
+    "batch_size": 64,
     "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
     "learning_rate": 0.00001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
     # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
@@ -34,11 +37,11 @@ training_params = {
     "num_data_input": 5000,  # num training data pts or images (whether pts or files)
     "augmentation_factor": 1,  # set >1 to have augmentation turned on
     "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
-    "jit_compile": False,  # boolean, affects GPU runs: false=slower but won't
+    "jit_compile": True,  # boolean, affects GPU runs: false=slower but won't
                            # crash on GPU runs (irrelevant on CPU-only runs)
     "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
     "tracking_port": 5000,  # typ 6006 for tensorboard and 5000 for mlflow
-    "tracking_expt_name": "flow_models2",
+    "tracking_expt_name": "flowmodels2",
 }
 model_arch_params = {
     "image_shape": (256, 256, 3),  # (height, width, channels) of images
@@ -204,14 +207,8 @@ if run_params["do_interp"]:
 
 if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_open"):
     import mlflow
-
-    plots_list = [
-        trainpts_latent_plot_path, outliers_images_path, inliers_images_path,
-        regen_images_path, sim_images_path, compare_images_path
-    ]
-    if run_params["do_interp"]:
-        plots_list.append(interp_images_path)
-    for artifact_path in plots_list:
-        mlflow.log_artifact(artifact_path, artifact_path="plots")
+    for p in Path(run_params["output_dir"]).glob("*.png"):
+        mlflow.log_artifact(str(p), artifact_path="plots")
+    mlflow.log_artifact(run_params["model_dir"], artifact_path="model")
     mlflow.end_run()
     run_params["mlflow_run_open"] = False
