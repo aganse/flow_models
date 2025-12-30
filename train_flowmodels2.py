@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 import utils
 import warnings
 
@@ -45,7 +46,7 @@ training_params = {
     "tracking_expt_name": "flowmodels2",
 }
 model_arch_params = {
-    "image_shape": (256, 256, 3),  # (height, width, channels) of images
+    "image_shape": (128, 128, 3),  # (height, width, channels) of images
     "bijector": "realnvp-based",  # "realnvp-based" or "glow"
     "flow_steps": 6,  # number of realnvp-based affine coupling layers
     "hidden_layers": [512, 512],  # nodes/layer in realnvp-based affine coupling layers
@@ -223,6 +224,6 @@ if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_o
     import mlflow
     for p in Path(run_params["output_dir"]).glob("*.png"):
         mlflow.log_artifact(str(p), artifact_path="plots")
-    mlflow.log_artifact(run_params["model_dir"], artifact_path="model")
+    mlflow.log_artifacts(run_params["model_dir"], artifact_path="model")
     mlflow.end_run()
     run_params["mlflow_run_open"] = False

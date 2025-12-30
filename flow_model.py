@@ -479,9 +479,22 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             callbacks.append(
                 MLflowLoggingCallback()
             )
-        infinite_train_generator = infinite_generator(train_gen)
+        def _train_data_gen():
+            for batch in infinite_generator(train_gen):
+                if isinstance(batch, (tuple, list)):
+                    yield batch[0]
+                else:
+                    yield batch
+
+        train_dataset = tf.data.Dataset.from_generator(
+            _train_data_gen,
+            output_signature=tf.TensorSpec(
+                shape=(None, *model_arch_params["image_shape"]),
+                dtype=tf.float32
+            ),
+        ).prefetch(tf.data.AUTOTUNE)
         history = flow_model.fit(
-            x=infinite_train_generator,
+            x=train_dataset,
             epochs=training_params["num_epochs"],
             steps_per_epoch=training_params["num_data_input"]
             // training_params["batch_size"]
