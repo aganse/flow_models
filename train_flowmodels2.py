@@ -18,6 +18,7 @@ run_params = {
     "model_dir": "models/flowmodels2/cats_256x256new",
     "dataset": "cats",
     "num_gen_sims": 10,  # number of new simulated images to generate
+    "img2lat_chunk_size": 32,  # minibatch size when mapping images -> latents to avoid OOM
     "do_train": True,  # true = training, false = inference w existing model in model_dir
     "images_path": "/storage/data/afhq",  # local filesys dir containing train/ and val/ subdirs
     #"images_path": "s3://mybucket",  # this works but is pretty slow, needs some optimizing
@@ -86,11 +87,19 @@ if run_params["do_imgs_and_points"]:
     # map 1000 pts from train_generator thru flow_model to latent space:
     print("Now calculating Gaussian pts corresponding to first 1000 training images...")
     mapped_training_pts, mean, reduced_cov, pca, top_outliers, closest_to_mean = (
-        utils.imgs_to_gaussian_pts(flow_model, train_generator, 1000)
+        utils.imgs_to_gaussian_pts(
+            flow_model,
+            train_generator,
+            1000,
+            chunk_size=run_params["img2lat_chunk_size"],
+        )
     )
     print("Now calculating Gaussian pts corresponding to first 9 'other' images...")
     other_pts, _, _, _, _, _ = utils.imgs_to_gaussian_pts(
-        flow_model, other_generator, 9
+        flow_model,
+        other_generator,
+        9,
+        chunk_size=run_params["img2lat_chunk_size"],
     )
     print("Now plotting 2D projection of those training points.")
     trainpts_latent_plot_path = run_params["output_dir"] + "/training_points_latentspace.png"
@@ -187,7 +196,12 @@ if run_params["do_interp"]:
     image_gen = image_files_to_data_generator(
         filenames, target_size=model_arch_params["image_shape"][:2]
     )
-    gaussian_points, _, _, _ = utils.imgs_to_gaussian_pts(flow_model, image_gen(), 2)
+    gaussian_points, _, _, _ = utils.imgs_to_gaussian_pts(
+        flow_model,
+        image_gen(),
+        2,
+        chunk_size=run_params["img2lat_chunk_size"],
+    )
     print(gaussian_points.shape)
     print(gaussian_points)
     gaussian_points = utils.interpolate_between_points(

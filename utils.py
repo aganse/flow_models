@@ -15,7 +15,9 @@ def _unwrap_batch(batch):
     return batch
 
 
-def imgs_to_gaussian_pts(model, image_generator, N, neigvals=100, p_outliers=10):
+def imgs_to_gaussian_pts(
+    model, image_generator, N, neigvals=100, p_outliers=10, chunk_size=None
+):
     """Map input images (from data generator) through the model to points in the
     Gaussian latent space.  Also computes latent space stats in reduced coords
     (via pca, since too high dimensionality for later sampling).  Also computes
@@ -24,6 +26,8 @@ def imgs_to_gaussian_pts(model, image_generator, N, neigvals=100, p_outliers=10)
 
     Images coming out of image_generator are (MxM) pixels.
     N = number of images to draw from image_generator to map.
+    chunk_size: optional size of minibatches for mapping to latent space to avoid
+      OOM; defaults to N (all at once).
     Make sure neigvals<<M^2.
     """
 
@@ -31,27 +35,36 @@ def imgs_to_gaussian_pts(model, image_generator, N, neigvals=100, p_outliers=10)
     image_generator = itertools.chain([first_batch], image_generator)
     M = np.prod(first_batch.shape[1:])
     neigvals = min(M, N, 100)
-    # print("imgs_to_gaussian_pts: M=", M, ", N=", N)
+    chunk_size = min(N, chunk_size or N)
 
-    def get_n_images(data_generator, n):
-        images = []
-        while len(images) < n:
+    def image_chunks(data_generator, n, chunk):
+        """Yield up to n images from data_generator in minibatches of size chunk."""
+        collected = 0
+        buffer = []
+        while collected < n:
             img_batch = _unwrap_batch(next(data_generator))
             for img in img_batch:
-                images.append(img)
-                if len(images) == n:
-                    images_np = np.array(images)
-                    images_tf = tf.convert_to_tensor(images_np, dtype=tf.float32)
-                    return images_tf
+                buffer.append(img)
+                collected += 1
+                if len(buffer) == chunk or collected == n:
+                    yield np.array(buffer, dtype=np.float32)
+                    buffer = []
+                if collected == n:
+                    break
 
-    images = get_n_images(image_generator, N)
-    print("images.shape 1:", images.shape)
-    images = tf.reshape(images, (-1, np.prod(images.shape[1:])))
-    print("images.shape 2:", images.shape)
-    gaussian_points = model.call(images)
+    print("images.shape 1:", (N, *first_batch.shape[1:]))
+    print("images.shape 2:", (N, int(M)))
+    gaussian_chunks = []
+    for img_chunk in image_chunks(image_generator, N, chunk_size):
+        flat_chunk = tf.reshape(
+            tf.convert_to_tensor(img_chunk, dtype=tf.float32), (-1, M)
+        )
+        gaussian_chunk = model.call(flat_chunk)
+        gaussian_chunks.append(gaussian_chunk.numpy())
+
+    gaussian_points = np.concatenate(gaussian_chunks, axis=0)
     print("first several gaussian pts:", gaussian_points[:8])
     print("gpts.shape 3:", gaussian_points.shape)
-    gaussian_points = gaussian_points.numpy()
 
     if N > 10:
         pca = PCA(n_components=neigvals)
