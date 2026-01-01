@@ -16,7 +16,13 @@ def _unwrap_batch(batch):
 
 
 def imgs_to_gaussian_pts(
-    model, image_generator, N, neigvals=100, p_outliers=10, chunk_size=None
+    model,
+    image_generator,
+    N,
+    neigvals=100,
+    p_outliers=10,
+    chunk_size=None,
+    pca_solver="auto",
 ):
     """Map input images (from data generator) through the model to points in the
     Gaussian latent space.  Also computes latent space stats in reduced coords
@@ -34,7 +40,11 @@ def imgs_to_gaussian_pts(
     first_batch = _unwrap_batch(next(image_generator))
     image_generator = itertools.chain([first_batch], image_generator)
     M = np.prod(first_batch.shape[1:])
-    neigvals = min(M, N, 100)
+    # Allow caller to override PCA dimensionality; keep legacy default when None.
+    if neigvals is None:
+        pca_n_components = None
+    else:
+        pca_n_components = min(M, N, neigvals)
     chunk_size = min(N, chunk_size or N)
 
     def image_chunks(data_generator, n, chunk):
@@ -67,19 +77,25 @@ def imgs_to_gaussian_pts(
     print("gpts.shape 3:", gaussian_points.shape)
 
     if N > 10:
-        pca = PCA(n_components=neigvals)
-        reduced_data = pca.fit_transform(gaussian_points)
         mean_full = np.mean(gaussian_points, axis=0)
-        mean_reduced = np.mean(reduced_data, axis=0)
-        cov_reduced = np.cov(reduced_data, rowvar=False)
-        dists_reduced = np.array(
-            [distance.euclidean(point, mean_reduced) for point in reduced_data]
-        )
-        outlier_indices = np.argsort(dists_reduced)[-p_outliers:]
-        top_outliers = gaussian_points[outlier_indices]
-        inlier_indices = np.argsort(dists_reduced)[:p_outliers]
-        closest_to_mean = gaussian_points[inlier_indices]
 
+        if pca_n_components not in (None, 0):
+            pca = PCA(n_components=pca_n_components, svd_solver=pca_solver)
+            reduced_data = pca.fit_transform(gaussian_points)
+            mean_reduced = np.mean(reduced_data, axis=0)
+            cov_reduced = np.cov(reduced_data, rowvar=False)
+            dists_reduced = np.array(
+                [distance.euclidean(point, mean_reduced) for point in reduced_data]
+            )
+            outlier_indices = np.argsort(dists_reduced)[-p_outliers:]
+            top_outliers = gaussian_points[outlier_indices]
+            inlier_indices = np.argsort(dists_reduced)[:p_outliers]
+            closest_to_mean = gaussian_points[inlier_indices]
+        else:
+            pca = None
+            cov_reduced = None
+            top_outliers = None
+            closest_to_mean = None
     else:
         mean_full = None
         cov_reduced = None
@@ -251,17 +267,22 @@ def plot_gaussian_pts_1d(
     plt.savefig(plotfile, bbox_inches="tight")
 
 
-def generate_multivariate_normal_samples(mean, reduced_cov, pca, num_samples):
+def generate_multivariate_normal_samples(
+    mean, reduced_cov, pca, num_samples, cov_scale=1.0
+):
     """Used by generate_imgs_in_batches().  The high dimensionality requires
     generating samples in reduced space (via pca, hence reduced_cov), and then
     transforming back out to full dimension, and thus this function.
     """
 
     # Generate new samples in reduced space
+    if pca is None or reduced_cov is None:
+        raise ValueError("PCA-based sampling requested but pca or reduced_cov is None.")
+
     new_samples_reduced = np.random.multivariate_normal(
         # (make 1D mean into 2D, then rotate/reduce it, then put back to 1D)
         mean=np.squeeze(pca.transform([mean])),
-        cov=reduced_cov,
+        cov=reduced_cov * cov_scale,
         size=num_samples,
     )
 
@@ -282,6 +303,8 @@ def generate_imgs_in_batches(
     batch_size=10,
     regen_pts=None,
     add_plot_num=False,
+    sampling_mode="pca",
+    cov_scale=1.0,
 ):
     """Given latent space distribution params, and/or list of points to use
     (regen_pts), map those through the model into images.
@@ -300,6 +323,8 @@ def generate_imgs_in_batches(
            Technically doesn't have to be training_pts, could be any array of pts.
     add_plot_num: boolean: add little orange id # at top left of output images
         to match them up to the numbers in the scatterplots.
+    sampling_mode: "pca" (legacy PCA-based sampling) or "direct" (flow_model.sample()).
+    cov_scale: multiplicative scaling on reduced_cov when sampling via PCA.
     """
 
     num_batches = (num_gen_images + batch_size - 1) // batch_size
@@ -309,10 +334,17 @@ def generate_imgs_in_batches(
         current_batch_size = min(batch_size, num_gen_images - batch_idx * batch_size)
 
         if regen_pts is None:
-            # Generate a batch of Gaussian samples using TensorFlow
-            samples_tf = generate_multivariate_normal_samples(
-                mean, reduced_cov, pca, current_batch_size
-            )
+            if sampling_mode == "direct":
+                latent_dim = np.prod(model.image_shape)
+                samples_tf = tf.random.normal(
+                    shape=(current_batch_size, latent_dim), dtype=tf.float32
+                )
+            elif sampling_mode == "pca":
+                samples_tf = generate_multivariate_normal_samples(
+                    mean, reduced_cov, pca, current_batch_size, cov_scale=cov_scale
+                )
+            else:
+                raise ValueError(f"Unknown sampling_mode '{sampling_mode}'")
         else:
             # Get next batch worth of points from supplied training_points
             regen_tf = tf.convert_to_tensor(regen_pts, dtype=tf.float32)
@@ -350,6 +382,8 @@ def generate_sim_pts(
     pca,
     regen_pts=None,
     batch_size=10,
+    sampling_mode="pca",
+    cov_scale=1.0,
 ):
     """Given latent space distribution params, and/or list of points to use
     (regen_pts), map those through the model into images.
@@ -361,13 +395,12 @@ def generate_sim_pts(
       mean: numpy array of the full-dimensional vector mean point (ideally near 0)
       reduced_cov: the cov matrix computed in the reduced space from pca
       pca: the pca object from imgs_to_gaussian_pts()
-    filename: string that numbers appended to for filenames of generated images
     batch_size: integer - note this is batches of generated images, not training data batches!
     regen_pts: (optional) numpy array of training_pts for regenerating images for
            first N of them, instead of generating random pts from mean & cov.
            Technically doesn't have to be training_pts, could be any array of pts.
-    add_plot_num: boolean: add little orange id # at top left of output images
-        to match them up to the numbers in the scatterplots.
+    sampling_mode: "pca" (legacy PCA-based sampling) or "direct" (flow_model.sample()).
+    cov_scale: multiplicative scaling on reduced_cov when sampling via PCA.
     """
 
     num_batches = (num_gen_images + batch_size - 1) // batch_size
@@ -378,10 +411,17 @@ def generate_sim_pts(
         current_batch_size = min(batch_size, num_gen_images - batch_idx * batch_size)
 
         if regen_pts is None:
-            # Generate a batch of Gaussian samples using TensorFlow
-            samples_tf = generate_multivariate_normal_samples(
-                mean, reduced_cov, pca, current_batch_size
-            )
+            if sampling_mode == "direct":
+                latent_dim = np.prod(model.image_shape)
+                samples_tf = tf.random.normal(
+                    shape=(current_batch_size, latent_dim), dtype=tf.float32
+                )
+            elif sampling_mode == "pca":
+                samples_tf = generate_multivariate_normal_samples(
+                    mean, reduced_cov, pca, current_batch_size, cov_scale=cov_scale
+                )
+            else:
+                raise ValueError(f"Unknown sampling_mode '{sampling_mode}'")
         else:
             # Get next batch worth of points from supplied training_points
             regen_tf = tf.convert_to_tensor(regen_pts, dtype=tf.float32)

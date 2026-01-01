@@ -25,6 +25,12 @@ run_params = {
     #"images_path": "s3://mybucket",  # this works but is pretty slow, needs some optimizing
     "do_imgs_and_points": True,  # generate scatterplots, sim images, etc:  not dataset specific
     "do_interp": False,  # interp sim images between some training points:  cat dataset specific
+    # Sampling-related knobs:
+    "sampling_mode": "direct",  # "pca" (legacy) or "direct" (flow_model.sample()) for sim generation
+    "cov_scale": 0.25,  # multiplier on reduced_cov when sampling via PCA (old behavior was /4)
+    "pca_n_components": 100,  # None to skip PCA in stats/sampling; higher value uses more PCs
+    "pca_solver": "auto",  # e.g., "randomized" to scale PCA to larger component counts
+    "regen_source": "pca_stats",  # "pca_stats", "flow_base", or "train_pts" for sim images
 }
 training_params = {
     "num_epochs": 20,
@@ -93,6 +99,8 @@ if run_params["do_imgs_and_points"]:
             train_generator,
             1000,
             chunk_size=run_params["img2lat_chunk_size"],
+            neigvals=run_params["pca_n_components"],
+            pca_solver=run_params["pca_solver"],
         )
     )
     print("Now calculating Gaussian pts corresponding to first 9 'other' images...")
@@ -101,6 +109,15 @@ if run_params["do_imgs_and_points"]:
         other_generator,
         9,
         chunk_size=run_params["img2lat_chunk_size"],
+        neigvals=run_params["pca_n_components"],
+        pca_solver=run_params["pca_solver"],
+    )
+    effective_pca_dim = pca.n_components_ if pca is not None else None
+    print(
+        f"Sampling config: mode={run_params['sampling_mode']}, "
+        f"regen_source={run_params['regen_source']}, "
+        f"pca_components={effective_pca_dim}, "
+        f"cov_scale={run_params['cov_scale']}"
     )
     print("Now plotting 2D projection of those training points.")
     trainpts_latent_plot_path = run_params["output_dir"] + "/training_points_latentspace.png"
@@ -159,14 +176,31 @@ if run_params["do_imgs_and_points"]:
     )
     print(f"Now generating {run_params['num_gen_sims']} simulated images...")
     sim_images_path = run_params["output_dir"] + "/sim_image"
+    sim_regen_pts = None
+    sim_sampling_mode = run_params["sampling_mode"]
+    if run_params["regen_source"] == "train_pts":
+        sim_regen_pts = mapped_training_pts[14:]
+    elif run_params["regen_source"] == "flow_base":
+        sim_sampling_mode = "direct"
+    elif run_params["regen_source"] != "pca_stats":
+        print(
+            f"Warning: unknown regen_source '{run_params['regen_source']}', "
+            "defaulting to pca_stats."
+        )
+    if sim_sampling_mode == "pca" and pca is None:
+        print("PCA stats not available; switching sampling_mode to 'direct'.")
+        sim_sampling_mode = "direct"
     sim_pts = utils.generate_imgs_in_batches(
         flow_model,
         run_params["num_gen_sims"],
         mean,
-        reduced_cov / 4,
+        reduced_cov,
         pca,
         filename=sim_images_path,
         batch_size=5,
+        regen_pts=sim_regen_pts,
+        sampling_mode=sim_sampling_mode,
+        cov_scale=run_params["cov_scale"],
         add_plot_num=True,
     )
     print("Now plotting 2D projection of training+sim+other points.")
