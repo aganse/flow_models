@@ -60,8 +60,8 @@ def _capture_and_save_summary(model, image_shape, output_dir, log_to_mlflow=Fals
 
     print(summary_text, end="")
 
-    if log_to_mlflow and mlflow.active_run():
-        mlflow.log_artifact(summary_path, artifact_path="reports")
+    # if log_to_mlflow and mlflow.active_run():
+    #     mlflow.log_artifact(summary_path, artifact_path="reports")
 
     return summary_path
 

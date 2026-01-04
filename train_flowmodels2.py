@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import numpy as np
 import utils
 import warnings
 
@@ -16,7 +17,7 @@ def _unwrap_batch(batch):
 
 run_params = {
     "output_dir": "output",
-    "model_dir": "models/flowmodels2/cats_256x256new",
+    "model_dir": "models/flowmodels2/cats_128x128",
     "dataset": "cats",
     "num_gen_sims": 10,  # number of new simulated images to generate
     "img2lat_chunk_size": 32,  # minibatch size when mapping images -> latents to avoid OOM
@@ -26,11 +27,11 @@ run_params = {
     "do_imgs_and_points": True,  # generate scatterplots, sim images, etc:  not dataset specific
     "do_interp": False,  # interp sim images between some training points:  cat dataset specific
     # Sampling-related knobs:
-    "sampling_mode": "direct",  # "pca" (legacy) or "direct" (flow_model.sample()) for sim generation
-    "cov_scale": 0.25,  # multiplier on reduced_cov when sampling via PCA (old behavior was /4)
-    "pca_n_components": 100,  # None to skip PCA in stats/sampling; higher value uses more PCs
-    "pca_solver": "auto",  # e.g., "randomized" to scale PCA to larger component counts
-    "regen_source": "pca_stats",  # "pca_stats", "flow_base", or "train_pts" for sim images
+    "sampling_mode": "direct",  # "pca" (legacy) or "direct" (from N(0,I)) for sim generation
+    "cov_scale": 0.05,  # multiplier on reduced_cov when sampling via PCA (legacy was 0.25)
+    "pca_n_components": None,  # legacy=100; None to skip PCA in stats/sampling; higher value uses more PCs
+    "pca_solver": "randomized",  # "auto" or "randomized": "randomized" to scale PCA to larger component counts
+    "regen_source": "flow_base",  # "pca_stats", "flow_base", or "train_pts" for sim images
 }
 training_params = {
     "num_epochs": 20,
@@ -103,6 +104,16 @@ if run_params["do_imgs_and_points"]:
             pca_solver=run_params["pca_solver"],
         )
     )
+    # Quick latent stats to gauge match to N(0,I)
+    latent_mean = np.mean(mapped_training_pts, axis=0)
+    latent_std = np.std(mapped_training_pts, axis=0)
+    print(
+        "Latent stats on mapped training pts: "
+        f"mean of means={latent_mean.mean():.4f}, "
+        f"min/median/max mean=({latent_mean.min():.4f}, {np.median(latent_mean):.4f}, {latent_mean.max():.4f}); "
+        f"mean std={latent_std.mean():.4f}, "
+        f"min/median/max std=({latent_std.min():.4f}, {np.median(latent_std):.4f}, {latent_std.max():.4f})"
+    )
     print("Now calculating Gaussian pts corresponding to first 9 'other' images...")
     other_pts, _, _, _, _, _ = utils.imgs_to_gaussian_pts(
         flow_model,
@@ -135,32 +146,35 @@ if run_params["do_imgs_and_points"]:
     )
     print("training_points_latentspace.png written.")
 
-    print(f"Now regenerating {run_params['num_gen_sims']} outlier images...")
-    outliers_images_path = run_params["output_dir"] + "/outlier_image"
-    outlier_pts = utils.generate_imgs_in_batches(
-        flow_model,
-        run_params["num_gen_sims"],
-        mean,
-        reduced_cov,
-        pca,
-        filename=outliers_images_path,
-        batch_size=5,
-        regen_pts=top_outliers,
-        add_plot_num=True,
-    )
-    print(f"Now regenerating {run_params['num_gen_sims']} inlier images...")
-    inliers_images_path = run_params["output_dir"] + "/inlier_image"
-    inlier_pts = utils.generate_imgs_in_batches(
-        flow_model,
-        run_params["num_gen_sims"],
-        mean,
-        reduced_cov,
-        pca,
-        filename=inliers_images_path,
-        batch_size=5,
-        regen_pts=closest_to_mean,
-        add_plot_num=True,
-    )
+    if top_outliers is None or closest_to_mean is None:
+        print("PCA stats not available; skipping outlier/inlier regenerations.")
+    else:
+        print(f"Now regenerating {run_params['num_gen_sims']} outlier images...")
+        outliers_images_path = run_params["output_dir"] + "/outlier_image"
+        outlier_pts = utils.generate_imgs_in_batches(
+            flow_model,
+            run_params["num_gen_sims"],
+            mean,
+            reduced_cov,
+            pca,
+            filename=outliers_images_path,
+            batch_size=5,
+            regen_pts=top_outliers,
+            add_plot_num=True,
+        )
+        print(f"Now regenerating {run_params['num_gen_sims']} inlier images...")
+        inliers_images_path = run_params["output_dir"] + "/inlier_image"
+        inlier_pts = utils.generate_imgs_in_batches(
+            flow_model,
+            run_params["num_gen_sims"],
+            mean,
+            reduced_cov,
+            pca,
+            filename=inliers_images_path,
+            batch_size=5,
+            regen_pts=closest_to_mean,
+            add_plot_num=True,
+        )
     print(f"Now regenerating {run_params['num_gen_sims']} training images...")
     regen_images_path = run_params["output_dir"] + "/regen_image"
     regen_pts = utils.generate_imgs_in_batches(
@@ -258,6 +272,8 @@ if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_o
     import mlflow
     for p in Path(run_params["output_dir"]).glob("*.png"):
         mlflow.log_artifact(str(p), artifact_path="plots")
-    mlflow.log_artifacts(run_params["model_dir"], artifact_path="model")
+    mlflow.log_artifact(run_params["model_dir"]+"/flow_model_summary.txt", artifact_path="model")
+    mlflow.log_artifact(run_params["model_dir"]+"/model_arch.json", artifact_path="model")
+    # (the model weights file at 2GB+ is typically too big to log in mlflow)
     mlflow.end_run()
     run_params["mlflow_run_open"] = False

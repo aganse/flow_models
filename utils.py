@@ -339,6 +339,8 @@ def generate_imgs_in_batches(
                 samples_tf = tf.random.normal(
                     shape=(current_batch_size, latent_dim), dtype=tf.float32
                 )
+                if cov_scale != 1.0:
+                    samples_tf = samples_tf * cov_scale
             elif sampling_mode == "pca":
                 samples_tf = generate_multivariate_normal_samples(
                     mean, reduced_cov, pca, current_batch_size, cov_scale=cov_scale
@@ -416,6 +418,8 @@ def generate_sim_pts(
                 samples_tf = tf.random.normal(
                     shape=(current_batch_size, latent_dim), dtype=tf.float32
                 )
+                if cov_scale != 1.0:
+                    samples_tf = samples_tf * cov_scale
             elif sampling_mode == "pca":
                 samples_tf = generate_multivariate_normal_samples(
                     mean, reduced_cov, pca, current_batch_size, cov_scale=cov_scale
