@@ -1,5 +1,3 @@
-import json
-import os
 from pathlib import Path
 import numpy as np
 import utils
@@ -23,7 +21,7 @@ run_params = {
     "img2lat_chunk_size": 32,  # minibatch size when mapping images -> latents to avoid OOM
     "do_train": True,  # true = training, false = inference w existing model in model_dir
     "images_path": "/storage/data/afhq",  # local filesys dir containing train/ and val/ subdirs
-    #"images_path": "s3://mybucket",  # this works but is pretty slow, needs some optimizing
+    # "images_path": "s3://mybucket",  # this works but is pretty slow, needs some optimizing
     "do_imgs_and_points": True,  # generate scatterplots, sim images, etc:  not dataset specific
     "do_interp": False,  # interp sim images between some training points:  cat dataset specific
     # Sampling-related knobs:
@@ -46,8 +44,7 @@ training_params = {
     "num_data_input": 5000,  # num training data pts or images (whether pts or files)
     "augmentation_factor": 1,  # set >1 to have augmentation turned on
     "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
-    "jit_compile": True,  # boolean, affects GPU runs: false=slower but won't
-                           # crash on GPU runs (irrelevant on CPU-only runs)
+    "jit_compile": True,  # boolean, normally True but sometimes useful in debugging
     "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
     "tracking_port": 5000,  # typ 6006 for tensorboard and 5000 for mlflow
     "tracking_expt_name": "flowmodels2",
@@ -268,12 +265,14 @@ if run_params["do_interp"]:
         regen=gaussian_points,
     )
 
+# Log to MLflow (if specified)
+# ----------------------------
 if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_open"):
     import mlflow
     for p in Path(run_params["output_dir"]).glob("*.png"):
         mlflow.log_artifact(str(p), artifact_path="plots")
-    mlflow.log_artifact(run_params["model_dir"]+"/flow_model_summary.txt", artifact_path="model")
-    mlflow.log_artifact(run_params["model_dir"]+"/model_arch.json", artifact_path="model")
-    # (the model weights file at 2GB+ is typically too big to log in mlflow)
+    mlflow.log_artifact(run_params["model_dir"] + "/flow_model_summary.txt", artifact_path="model")
+    mlflow.log_artifact(run_params["model_dir"] + "/model_arch.json", artifact_path="model")
+    # (the model weights file at 2GB+ is too big to log in mlflow)
     mlflow.end_run()
     run_params["mlflow_run_open"] = False

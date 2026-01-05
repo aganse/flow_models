@@ -33,8 +33,7 @@ training_params = {
     "num_data_input": 50000,  # num training data pts or images (whether pts or files)
     "augmentation_factor": 1,  # set >1 to have augmentation turned on
     "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
-    "jit_compile": True,  # boolean, affects GPU runs: false=slower but won't
-                           # crash on GPU runs (irrelevant on CPU-only runs)
+    "jit_compile": True,  # boolean, normally True but sometimes useful in debugging
     "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
     "tracking_port": 5000,  # typ 6006 for tensorboard and 5000 for mlflow
     "tracking_expt_name": "flowmodels1",

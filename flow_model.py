@@ -201,7 +201,7 @@ class FlowModel(tf.keras.Model):
             layer_name = "Flow_step"
             flow_step_list = []
             for i in range(flow_steps):
-                #shift_log_scale_layer = ShiftAndLogScaleCNN(
+                # shift_log_scale_layer = ShiftAndLogScaleCNN(
                 shift_log_scale_layer = ShiftAndLogScaleDense(
                     output_dim=flat_image_size // 2,
                     name="{}_{}_shift_log_scale_layer".format(layer_name, i),
@@ -225,12 +225,12 @@ class FlowModel(tf.keras.Model):
                         # (using own shift_and_log_scale_fn to experiment/expand,
                         # but similar to tfb.real_nvp_default_template)
                         shift_and_log_scale_fn=shift_log_scale_fn,
-                        #shift_and_log_scale_fn=tfb.real_nvp_default_template(
+                        # shift_and_log_scale_fn=tfb.real_nvp_default_template(
                         #    hidden_layers=hidden_layers,
-                            # kernel_initializer=tf.keras.initializers.GlorotUniform(),
-                            # kernel_regularizer=tf.keras.regularizers.l2(reg_level),
-                        #),
-                        ##log_scale_clip_fn=lambda log_s: tf.clip_by_value(log_s, -5.0, 5.0),
+                        #    kernel_initializer=tf.keras.initializers.GlorotUniform(),
+                        #    kernel_regularizer=tf.keras.regularizers.l2(reg_level),
+                        # ),
+                        # log_scale_clip_fn=lambda log_s: tf.clip_by_value(log_s, -5.0, 5.0),
                         validate_args=validate_args,
                         name="{}_{}_RealNVP".format(layer_name, i),
                     )
