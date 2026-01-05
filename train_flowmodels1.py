@@ -16,8 +16,8 @@ def main():
     # -----------------------
     run_params = {
         "output_dir": "output",  # local artifacts storage area before possibly logging to mlflow
-        "model_dir": "models/flowmodels1",  # local model storage area before possibly logging to mlflow
-        "dataset": "mvn",  # "moons", "gmm", "mvn"
+        "model_dir": "model/flowmodels1",  # local model storage area before possibly logging to mlflow
+        "dataset": "moons",  # "moons", "gmm", "mvn"
         "num_gen_sims": 1000,  # number of new simulated data to generate
         "do_train": True,  # true = training, false = inference w existing model in model_dir
         "num_outliers_to_highlight": 10,  # set >0 to highlight lowest-density latent points
@@ -50,6 +50,8 @@ def main():
     # List the param settings:
     print("")
     utils.print_run_params(**run_params, **training_params, **model_arch_params)
+    os.makedirs(run_params["output_dir"], exist_ok=True)
+    os.makedirs(run_params["model_dir"], exist_ok=True)
     highlight_count = int(run_params.get("num_outliers_to_highlight", 0) or 0)
 
     # Get the data
@@ -62,7 +64,7 @@ def main():
     print("train_generator test: shape of one batch: ", sample_batch.shape, "\n")
     datain_plot_path = None
     if run_params["dataset"] in ["moons", "gmm", "mvn"]:
-        datain_plot_path = run_params["output_dir"] + "/test_input_dataspace.png"
+        datain_plot_path = run_params["output_dir"] + "/trainpts_dataspace.png"
         if highlight_count <= 0:
             # Quick sanity-check plot of some of the data for this group of 2D problems
             input_data_test = np.concatenate(
@@ -126,10 +128,13 @@ def main():
         highlight_indices = np.argsort(latent_log_probs)[:effective_highlight]
         highlight_latent_pts = mapped_training_pts[highlight_indices]
         highlight_data_pts = mapped_training_inputs[highlight_indices]
-        highlight_label = f"lowest {effective_highlight} latent density pts"
+        highlight_label = (
+            f"lowest {effective_highlight} latent\n"
+            "density pts"
+        )
 
     # latent space plot:
-    latent_plot_path = run_params["output_dir"] + "/test_output_latentspace.png"
+    latent_plot_path = run_params["output_dir"] + "/trainpts_latentspace.png"
     utils.plot_pts_2d(
         mapped_training_pts,
         main_pts_label="mapped train pts",
@@ -158,10 +163,9 @@ def main():
         mean,
         cov,
         pca,
-        regen_pts=mapped_training_pts,
     )
     # data space plot:
-    dataout_plot_path = run_params["output_dir"] + "/test_output_dataspace.png"
+    dataout_plot_path = run_params["output_dir"] + "/simpts_dataspace.png"
     utils.plot_pts_2d(
         sim_pts,
         main_pts_label="mapped sim pts",

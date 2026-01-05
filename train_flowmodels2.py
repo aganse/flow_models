@@ -2,6 +2,7 @@ from pathlib import Path
 import numpy as np
 import utils
 import warnings
+import os
 
 from file_utils import get_data_generator, image_files_to_data_generator
 from flow_model import default_training_sequence
@@ -15,7 +16,7 @@ def _unwrap_batch(batch):
 
 run_params = {
     "output_dir": "output",
-    "model_dir": "models/flowmodels2/cats_128x128",
+    "model_dir": "model/flowmodels2/cats_128x128",
     "dataset": "cats",
     "num_gen_sims": 10,  # number of new simulated images to generate
     "img2lat_chunk_size": 32,  # minibatch size when mapping images -> latents to avoid OOM
@@ -59,6 +60,8 @@ model_arch_params = {
 # List the param settings:
 print("")
 utils.print_run_params(**run_params, **training_params, **model_arch_params)
+os.makedirs(run_params["output_dir"], exist_ok=True)
+os.makedirs(run_params["model_dir"], exist_ok=True)
 
 
 # Get the data

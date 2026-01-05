@@ -9,8 +9,11 @@ __pycache__/
 # Specific to flow_models repo
 data/
 models/
+model/
 output/
+outputs/
 logs/
+log/
 
 # Distribution / packaging
 .Python
