@@ -122,16 +122,9 @@ available, at
     at the top of train.py to squelch `UserWarning`s that are spewed by TFP.)
 3. Set desired parameters in `train_flowmodelsN.py` (where the `N` is the number
     of the application 1-7, ie working towards 7 train scripts for the 7
-    applications.
+    applications).  Refer to [`doc/config.md`](doc/config.md) for a consolidated
+    description of every user-facing parameter across the training scripts.
 4. Run `python train_flowmodelsN.py` (again where `N` is the application number).
-
-| Purpose | Params | Effect |
-| --- | --- | --- |
-| Legacy PCA-based sampling | `sampling_mode="pca"` (default), `cov_scale=0.25`, `pca_n_components=100`, `pca_solver="auto"` | Draw latents from PCA-reduced Gaussian with scaled covariance (old behavior). Increase `cov_scale` (e.g., 1.0) or `pca_n_components` to sharpen samples; use `pca_solver="randomized"` for larger component counts. |
-| Direct base sampling (no PCA bottleneck) | `sampling_mode="direct"` or `regen_source="flow_base"` | Sample `z ~ N(0,I)` via the flow’s base distribution and invert; keeps full latent dimensionality. Ignores PCA stats. |
-| Regen from training points | `regen_source="train_pts"` | Regenerate images from mapped training points instead of random sampling. |
-| Skip PCA stats entirely | `pca_n_components=None` | Do not fit PCA when mapping images to latents; sampling must be `sampling_mode="direct"` in this case. |
-| Adjust PCA solver | `pca_solver` (`"auto"` \| `"randomized"`) | Use randomized SVD when bumping `pca_n_components` into hundreds/low thousands for speed. |
 
 ### C. Key references
 

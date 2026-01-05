@@ -19,6 +19,7 @@ def main():
         "dataset": "moons",  # "moons", "gmm", "mvn"
         "num_gen_sims": 1000,  # number of new simulated data to generate
         "do_train": True,  # true = training, false = inference w existing model in model_dir
+        "num_outliers_to_highlight": 10,  # set >0 to highlight lowest-density latent points
     }
     training_params = {
         "num_epochs": 20,
@@ -48,6 +49,7 @@ def main():
     # List the param settings:
     print("")
     utils.print_run_params(**run_params, **training_params, **model_arch_params)
+    highlight_count = int(run_params.get("num_outliers_to_highlight", 0) or 0)
 
     # Get the data
     # ------------
@@ -59,18 +61,19 @@ def main():
     print("train_generator test: shape of one batch: ", sample_batch.shape, "\n")
     datain_plot_path = None
     if run_params["dataset"] in ["moons", "gmm", "mvn"]:
-        # Quick sanity-check plot of some of the data for this group of 2D problems
-        input_data_test = np.concatenate(
-            [_unwrap_batch(next(train_generator)) for _ in range(20)], axis=0
-        )
         datain_plot_path = run_params["output_dir"] + "/test_input_dataspace.png"
-        utils.plot_pts_2d(
-            input_data_test,
-            main_pts_label="original train pts",
-            side="data",
-            plotfile=datain_plot_path,
-        )
-        print("test_input_dataspace.png written.")
+        if highlight_count <= 0:
+            # Quick sanity-check plot of some of the data for this group of 2D problems
+            input_data_test = np.concatenate(
+                [_unwrap_batch(next(train_generator)) for _ in range(20)], axis=0
+            )
+            utils.plot_pts_2d(
+                input_data_test,
+                main_pts_label="original train pts",
+                side="data",
+                plotfile=datain_plot_path,
+            )
+            print("test_input_dataspace.png written.")
 
     # Train the model
     # ---------------
@@ -83,9 +86,47 @@ def main():
     print("Analyzing/plotting various model results:")
     print("-----------------------------------------")
     # map 1000 pts from train_generator thru flow_model to latent space:
-    mapped_training_pts, mean, cov, pca, top_outliers, closest_to_mean = (
-        utils.imgs_to_gaussian_pts(flow_model, train_generator, 1000)
+    mapping_results = utils.imgs_to_gaussian_pts(
+        flow_model,
+        train_generator,
+        1000,
+        return_input_samples=highlight_count > 0,
     )
+    if highlight_count > 0:
+        (
+            mapped_training_pts,
+            mean,
+            cov,
+            pca,
+            top_outliers,
+            closest_to_mean,
+            mapped_training_inputs,
+        ) = mapping_results
+    else:
+        (
+            mapped_training_pts,
+            mean,
+            cov,
+            pca,
+            top_outliers,
+            closest_to_mean,
+        ) = mapping_results
+        mapped_training_inputs = None
+
+    highlight_latent_pts = None
+    highlight_data_pts = None
+    highlight_label = None
+    if highlight_count > 0:
+        effective_highlight = min(highlight_count, mapped_training_pts.shape[0])
+        base_dist = flow_model.flow.distribution
+        latent_log_probs = base_dist.log_prob(
+            tf.convert_to_tensor(mapped_training_pts, dtype=tf.float32)
+        ).numpy()
+        highlight_indices = np.argsort(latent_log_probs)[:effective_highlight]
+        highlight_latent_pts = mapped_training_pts[highlight_indices]
+        highlight_data_pts = mapped_training_inputs[highlight_indices]
+        highlight_label = f"lowest {effective_highlight} latent density pts"
+
     # latent space plot:
     latent_plot_path = run_params["output_dir"] + "/test_output_latentspace.png"
     utils.plot_pts_2d(
@@ -93,8 +134,22 @@ def main():
         main_pts_label="mapped train pts",
         side="latent",
         plotfile=latent_plot_path,
+        highlight_pts=highlight_latent_pts,
+        highlight_label=highlight_label or "latent outliers",
+        highlight_color="orange",
     )
     print("test_output_latentspace.png written.")
+    if highlight_count > 0 and datain_plot_path and highlight_data_pts is not None:
+        utils.plot_pts_2d(
+            mapped_training_inputs,
+            main_pts_label="original train pts",
+            side="data",
+            plotfile=datain_plot_path,
+            highlight_pts=highlight_data_pts,
+            highlight_label=highlight_label or "latent outliers",
+            highlight_color="orange",
+        )
+        print("test_input_dataspace.png written.")
     # map num_gen_sims sim pts from latent space thru flow_model to data space:
     sim_pts = utils.generate_sim_pts(
         flow_model,
@@ -168,7 +223,7 @@ def _run_change_of_variables_checks(
 ):
     """Verify log p(x) consistency via change-of-variables in both directions."""
     print("\nChange-of-variables consistency checks"
-          "(to verify model implementation but not training success):")
+          "to verify model implementation (but not training success):")
     flat_dim = int(np.prod(flow_model.image_shape))
 
     # Data -> latent direction

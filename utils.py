@@ -23,6 +23,7 @@ def imgs_to_gaussian_pts(
     p_outliers=10,
     chunk_size=None,
     pca_solver="auto",
+    return_input_samples=False,
 ):
     """Map input images (from data generator) through the model to points in the
     Gaussian latent space.  Also computes latent space stats in reduced coords
@@ -35,6 +36,8 @@ def imgs_to_gaussian_pts(
     chunk_size: optional size of minibatches for mapping to latent space to avoid
       OOM; defaults to N (all at once).
     Make sure neigvals<<M^2.
+    return_input_samples: when True, returns an additional numpy array containing
+      the flattened input samples that produced the latent points.
     """
 
     first_batch = _unwrap_batch(next(image_generator))
@@ -65,16 +68,22 @@ def imgs_to_gaussian_pts(
     print("images.shape 1:", (N, *first_batch.shape[1:]))
     print("images.shape 2:", (N, int(M)))
     gaussian_chunks = []
+    input_chunks = [] if return_input_samples else None
     for img_chunk in image_chunks(image_generator, N, chunk_size):
         flat_chunk = tf.reshape(
             tf.convert_to_tensor(img_chunk, dtype=tf.float32), (-1, M)
         )
         gaussian_chunk = model.call(flat_chunk)
         gaussian_chunks.append(gaussian_chunk.numpy())
+        if return_input_samples:
+            input_chunks.append(np.reshape(img_chunk, (img_chunk.shape[0], -1)))
 
     gaussian_points = np.concatenate(gaussian_chunks, axis=0)
     print("first several gaussian pts:", gaussian_points[:8])
     print("gpts.shape 3:", gaussian_points.shape)
+    input_samples = (
+        np.concatenate(input_chunks, axis=0) if return_input_samples else None
+    )
 
     if N > 10:
         mean_full = np.mean(gaussian_points, axis=0)
@@ -103,6 +112,16 @@ def imgs_to_gaussian_pts(
         top_outliers = None
         closest_to_mean = None
 
+    if return_input_samples:
+        return (
+            gaussian_points,
+            mean_full,
+            cov_reduced,
+            pca,
+            top_outliers,
+            closest_to_mean,
+            input_samples,
+        )
     return gaussian_points, mean_full, cov_reduced, pca, top_outliers, closest_to_mean
 
 
@@ -117,32 +136,46 @@ def plot_pts_2d(
     other_pts_label="anomaly images",
     num_regen=None,
     side="latent",  # "latent" or "data"
+    highlight_pts=None,
+    highlight_label="highlighted pts",
+    highlight_color="orange",
 ):
     """Scatterplot of various categories of points in the Gaussian latent space."""
+
+    train_pts = np.asarray(train_pts)
+    if sim_pts is not None:
+        sim_pts = np.asarray(sim_pts)
+    if other_pts is not None:
+        other_pts = np.asarray(other_pts)
+    if highlight_pts is not None:
+        highlight_pts = np.asarray(highlight_pts)
+    if mean is not None:
+        mean = np.asarray(mean)
 
     print("plot_pts_2d train_pts.shape:", train_pts.shape)
     if train_pts.shape[1] > 2:
         print("applying PCA to reduce dimensions to 2 to plot...")
         pca = PCA(n_components=2)
-        if sim_pts is not None and other_pts is not None:
-            # Combine and find pca of combo plus origin(mean)
-            mix_pts = pca.fit_transform(np.concatenate([sim_pts, other_pts, [mean]]))
+        pca_inputs = [train_pts]
+        if sim_pts is not None:
+            pca_inputs.append(sim_pts)
+        if other_pts is not None:
+            pca_inputs.append(other_pts)
+        if highlight_pts is not None:
+            pca_inputs.append(highlight_pts)
+        if mean is not None:
+            pca_inputs.append(np.reshape(mean, (1, -1)))
+        mix_pts = np.concatenate(pca_inputs, axis=0)
+        pca.fit(mix_pts)
+        train_pts = pca.transform(train_pts)
+        if sim_pts is not None:
             sim_pts = pca.transform(sim_pts)
+        if other_pts is not None:
             other_pts = pca.transform(other_pts)
-            train_pts = pca.transform(train_pts)
-        elif sim_pts is not None and other_pts is None:
-            # Find pca of sim_pts plus origin(mean)
-            mix_pts = pca.fit_transform(np.concatenate([sim_pts, [mean]]))
-            sim_pts = pca.transform(sim_pts)
-            train_pts = pca.transform(train_pts)
-        elif sim_pts is None and other_pts is not None:
-            # Find pca of other_pts plus origin(mean)
-            mix_pts = pca.fit_transform(np.concatenate([other_pts, [mean]]))
-            other_pts = pca.transform(other_pts)
-            train_pts = pca.transform(train_pts)
-        elif sim_pts is None and other_pts is None:
-            # Find pca of just the training pts samples
-            train_pts = pca.fit_transform(train_pts)
+        if highlight_pts is not None:
+            highlight_pts = pca.transform(highlight_pts)
+        if mean is not None:
+            mean = pca.transform(np.reshape(mean, (1, -1)))[0]
 
     fig, ax = plt.subplots()
     ax.scatter(
@@ -184,6 +217,17 @@ def plot_pts_2d(
                 ha="center",
                 va="center",
             )
+
+    if highlight_pts is not None and highlight_pts.size > 0:
+        ax.scatter(
+            highlight_pts[:, 0],
+            highlight_pts[:, 1],
+            color=highlight_color,
+            label=highlight_label,
+            edgecolor="black",
+            linewidth=0.5,
+            zorder=5,
+        )
 
     # autoset the plot limits to smallest square containing all points
     ax.set_aspect('equal', adjustable='box')
