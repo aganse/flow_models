@@ -1,6 +1,7 @@
 import warnings
 
 import numpy as np
+import tensorflow as tf
 
 import utils
 from file_utils import get_data_generator
@@ -9,116 +10,216 @@ from flow_model import default_training_sequence
 warnings.filterwarnings("ignore", category=UserWarning)  # TFP spews a number of these
 
 
+def main():
+    # User parameter settings
+    # -----------------------
+    run_params = {
+        "output_dir": "output",  # local artifacts storage area before possibly logging to mlflow
+        "model_dir": "models/flowmodels1",  # local model storage area before possibly logging to mlflow
+        "dataset": "moons",  # "moons", "gmm", "mvn"
+        "num_gen_sims": 1000,  # number of new simulated data to generate
+        "do_train": True,  # true = training, false = inference w existing model in model_dir
+    }
+    training_params = {
+        "num_epochs": 20,
+        "batch_size": 128,
+        "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
+        "learning_rate": 0.0001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+        # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
+        #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
+        #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
+        "early_stopping_patience": 0,  # value <=0 turns off early_stopping
+        # note current model arch has 534,544 params:
+        "num_data_input": 100000,  # num training data pts or images (whether pts or files)
+        "augmentation_factor": 1,  # set >1 to have augmentation turned on
+        "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
+        "jit_compile": True,  # boolean, normally True but sometimes useful in debugging
+        "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
+        "tracking_port": 5000,  # typ 6006 for tensorboard and 5000 for mlflow
+        "tracking_expt_name": "flowmodels1",
+    }
+    model_arch_params = {
+        "image_shape": (2,),  # 2D points with (no color labels in this run)
+        "bijector": "realnvp-based",
+        "flow_steps": 8,  # 8 number of realnvp-based affine coupling layers
+        "hidden_layers": [256, 256],  # 256,256 nodes/denselayer or filters/cnnlayer in affine coupling layers
+        "validate_args": True,
+    }
+    # List the param settings:
+    print("")
+    utils.print_run_params(**run_params, **training_params, **model_arch_params)
+
+    # Get the data
+    # ------------
+    train_generator = get_data_generator(
+        dataset=run_params["dataset"],
+        batch_size=training_params["batch_size"],
+    )
+    sample_batch = _unwrap_batch(next(train_generator))
+    print("train_generator test: shape of one batch: ", sample_batch.shape, "\n")
+    datain_plot_path = None
+    if run_params["dataset"] in ["moons", "gmm", "mvn"]:
+        # Quick sanity-check plot of some of the data for this group of 2D problems
+        input_data_test = np.concatenate(
+            [_unwrap_batch(next(train_generator)) for _ in range(20)], axis=0
+        )
+        datain_plot_path = run_params["output_dir"] + "/test_input_dataspace.png"
+        utils.plot_pts_2d(
+            input_data_test,
+            main_pts_label="original train pts",
+            side="data",
+            plotfile=datain_plot_path,
+        )
+        print("test_input_dataspace.png written.")
+
+    # Train the model
+    # ---------------
+    flow_model, history = default_training_sequence(
+        train_generator, run_params, training_params, model_arch_params
+    )
+
+    # Analyze/plot various model results
+    # ----------------------------------
+    print("Analyzing/plotting various model results:")
+    print("-----------------------------------------")
+    # map 1000 pts from train_generator thru flow_model to latent space:
+    mapped_training_pts, mean, cov, pca, top_outliers, closest_to_mean = (
+        utils.imgs_to_gaussian_pts(flow_model, train_generator, 1000)
+    )
+    # latent space plot:
+    latent_plot_path = run_params["output_dir"] + "/test_output_latentspace.png"
+    utils.plot_pts_2d(
+        mapped_training_pts,
+        main_pts_label="mapped train pts",
+        side="latent",
+        plotfile=latent_plot_path,
+    )
+    print("test_output_latentspace.png written.")
+    # map num_gen_sims sim pts from latent space thru flow_model to data space:
+    sim_pts = utils.generate_sim_pts(
+        flow_model,
+        run_params["num_gen_sims"],
+        mean,
+        cov,
+        pca,
+        regen_pts=mapped_training_pts,
+    )
+    # data space plot:
+    dataout_plot_path = run_params["output_dir"] + "/test_output_dataspace.png"
+    utils.plot_pts_2d(
+        sim_pts,
+        main_pts_label="mapped sim pts",
+        side="data",
+        plotfile=dataout_plot_path,
+    )
+    print("test_output_dataspace.png written.")
+    likelihood_sample_count = min(4096, training_params["batch_size"] * 8)
+    likelihood_metrics = _run_change_of_variables_checks(
+        flow_model,
+        run_params["dataset"],
+        training_params["batch_size"],
+        num_data_samples=likelihood_sample_count,
+        num_latent_samples=likelihood_sample_count,
+    )
+    if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_open"):
+        import mlflow
+        if likelihood_metrics:
+            mlflow.log_metrics(likelihood_metrics)
+        plot_paths = [latent_plot_path, dataout_plot_path]
+        if datain_plot_path:
+            plot_paths.append(datain_plot_path)
+        for artifact_path in plot_paths:
+            mlflow.log_artifact(artifact_path, artifact_path="plots")
+        mlflow.log_artifact(run_params["model_dir"], artifact_path="model")
+        mlflow.end_run()
+        run_params["mlflow_run_open"] = False
+
+
 def _unwrap_batch(batch):
     return batch[0] if isinstance(batch, (tuple, list)) else batch
 
 
-run_params = {
-    "output_dir": "output",  # local artifacts storage area before possibly logging to mlflow
-    "model_dir": "models/flowmodels1",  # local model storage area before possibly logging to mlflow
-    "dataset": "moons",  # "moons", "gmm", "mvn"
-    "num_gen_sims": 1000,  # number of new simulated data to generate
-    "do_train": True,  # true = training, false = inference w existing model in model_dir
-}
-training_params = {
-    "num_epochs": 20,
-    "batch_size": 256,
-    "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-    "learning_rate": 0.0001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
-    # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
-    #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
-    #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
-    "early_stopping_patience": 10,  # value <=0 turns off early_stopping
-    # note current model arch has 534,544 params:
-    "num_data_input": 50000,  # num training data pts or images (whether pts or files)
-    "augmentation_factor": 1,  # set >1 to have augmentation turned on
-    "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
-    "jit_compile": True,  # boolean, normally True but sometimes useful in debugging
-    "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
-    "tracking_port": 5000,  # typ 6006 for tensorboard and 5000 for mlflow
-    "tracking_expt_name": "flowmodels1",
-}
-model_arch_params = {
-    "image_shape": (2,),  # 2D points with (no color labels in this run)
-    "bijector": "realnvp-based",
-    "flow_steps": 8,  # number of realnvp-based affine coupling layers
-    "hidden_layers": [256, 256],  # nodes/denselayer or filters/cnnlayer in affine coupling layers
-    "validate_args": True,
-}
-# List the param settings:
-print("")
-utils.print_run_params(**run_params, **training_params, **model_arch_params)
+def _collect_samples_from_generator(generator, num_samples):
+    """Accumulate exactly num_samples items from a generator that yields batches."""
+    collected = []
+    total = 0
+    while total < num_samples:
+        batch = _unwrap_batch(next(generator))
+        take = min(num_samples - total, batch.shape[0])
+        collected.append(np.asarray(batch[:take], dtype=np.float32))
+        total += take
+    return np.concatenate(collected, axis=0)
 
 
-# Get the data
-# ------------
-train_generator = get_data_generator(
-    dataset=run_params["dataset"],
-    batch_size=training_params["batch_size"],
-)
-sample_batch = _unwrap_batch(next(train_generator))
-print("train_generator test: shape of one batch: ", sample_batch.shape, "\n")
-if run_params["dataset"] in ["moons", "gmm", "mvn"]:
-    # Quick sanity-check plot of some of the data for this group of 2D problems
-    input_data_test = np.concatenate(
-        [_unwrap_batch(next(train_generator)) for _ in range(20)], axis=0
+def _describe_stats(label, values):
+    arr = np.asarray(values, dtype=np.float64)
+    print(
+        f"    {label:<20} mean={arr.mean(): .6f}  std={arr.std(): .6f}  "
+        f"min={arr.min(): .6f}  max={arr.max(): .6f}  max|.|={np.abs(arr).max(): .6f}"
     )
-    datain_plot_path = run_params["output_dir"] + "/test_input_dataspace.png"
-    utils.plot_pts_2d(
-        input_data_test,
-        main_pts_label="original train pts",
-        side="data",
-        plotfile=datain_plot_path,
-    )
-    print("test_input_dataspace.png written.")
 
 
-# Train the model
-# ---------------
-flow_model, history = default_training_sequence(
-    train_generator, run_params, training_params, model_arch_params
-)
-
-
-# Analyze/plot various model results
-# ----------------------------------
-print("Analyzing/plotting various model results:")
-print("-----------------------------------------")
-# map 1000 pts from train_generator thru flow_model to latent space:
-mapped_training_pts, mean, cov, pca, top_outliers, closest_to_mean = (
-    utils.imgs_to_gaussian_pts(flow_model, train_generator, 1000)
-)
-# latent space plot:
-latent_plot_path = run_params["output_dir"] + "/test_output_latentspace.png"
-utils.plot_pts_2d(
-    mapped_training_pts,
-    main_pts_label="mapped train pts",
-    side="latent",
-    plotfile=latent_plot_path,
-)
-print("test_output_latentspace.png written.")
-# map num_gen_sims sim pts from latent space thru flow_model to data space:
-sim_pts = utils.generate_sim_pts(
+def _run_change_of_variables_checks(
     flow_model,
-    run_params["num_gen_sims"],
-    mean,
-    cov,
-    pca,
-    regen_pts=mapped_training_pts,
-)
-# data space plot:
-dataout_plot_path = run_params["output_dir"] + "/test_output_dataspace.png"
-utils.plot_pts_2d(
-    sim_pts,
-    main_pts_label="mapped sim pts",
-    side="data",
-    plotfile=dataout_plot_path,
-)
-print("test_output_dataspace.png written.")
-if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_open"):
-    import mlflow
-    for artifact_path in [latent_plot_path, datain_plot_path, dataout_plot_path]:
-        mlflow.log_artifact(artifact_path, artifact_path="plots")
-    mlflow.log_artifact(run_params["model_dir"], artifact_path="model")
-    mlflow.end_run()
-    run_params["mlflow_run_open"] = False
+    dataset_label,
+    batch_size,
+    num_data_samples=2048,
+    num_latent_samples=2048,
+):
+    """Verify log p(x) consistency via change-of-variables in both directions."""
+    print("\nChange-of-variables consistency checks"
+          "(to verify model implementation but not training success):")
+    flat_dim = int(np.prod(flow_model.image_shape))
+
+    # Data -> latent direction
+    data_gen = get_data_generator(dataset=dataset_label, batch_size=batch_size)
+    data_samples = _collect_samples_from_generator(data_gen, num_data_samples)
+    data_flat = data_samples.reshape(data_samples.shape[0], flat_dim)
+    x_tensor = tf.convert_to_tensor(data_flat, dtype=tf.float32)
+    log_px_direct = flow_model.flow.log_prob(x_tensor).numpy()
+    z_tensor = flow_model.flow.bijector.inverse(x_tensor)
+    log_pz = flow_model.flow.distribution.log_prob(z_tensor).numpy()
+    logdet_inverse = flow_model.flow.bijector.inverse_log_det_jacobian(
+        x_tensor, event_ndims=1
+    ).numpy()
+    log_px_via_change = log_pz + logdet_inverse
+    diff_data = log_px_direct - log_px_via_change
+
+    print("  data → latent")
+    _describe_stats("log_px_direct", log_px_direct)
+    _describe_stats("log_pz+log|detJ|", log_px_via_change)
+    _describe_stats("difference", diff_data)
+
+    # Latent -> data direction
+    base_dist = flow_model.flow.distribution
+    z_samples = base_dist.sample(num_latent_samples)
+    log_pz_direct = base_dist.log_prob(z_samples).numpy()
+    logdet_forward = flow_model.flow.bijector.forward_log_det_jacobian(
+        z_samples, event_ndims=1
+    ).numpy()
+    x_from_z = flow_model.flow.bijector.forward(z_samples)
+    log_px_direct_from_z = flow_model.flow.log_prob(x_from_z).numpy()
+    log_px_via_change = log_pz_direct - logdet_forward
+    diff_latent = log_px_direct_from_z - log_px_via_change
+    log_pz_via_change = log_px_direct_from_z + logdet_forward
+    diff_pz = log_pz_direct - log_pz_via_change
+
+    print("  latent → data")
+    _describe_stats("log_px_direct", log_px_direct_from_z)
+    _describe_stats("log_pz-log|detJ|", log_px_via_change)
+    _describe_stats("difference", diff_latent)
+    _describe_stats("log_pz_direct", log_pz_direct)
+    _describe_stats("log_pz_via_x", log_pz_via_change)
+    _describe_stats("pz difference", diff_pz)
+
+    return {
+        "data_latent_diff_mean": float(np.mean(diff_data)),
+        "data_latent_diff_max_abs": float(np.abs(diff_data).max()),
+        "latent_data_diff_mean": float(np.mean(diff_latent)),
+        "latent_data_diff_max_abs": float(np.abs(diff_latent).max()),
+        "latent_pz_diff_max_abs": float(np.abs(diff_pz).max()),
+    }
+
+
+if __name__ == "__main__":
+    main()
