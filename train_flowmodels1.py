@@ -1,3 +1,4 @@
+import os
 import warnings
 
 import numpy as np
@@ -16,7 +17,7 @@ def main():
     run_params = {
         "output_dir": "output",  # local artifacts storage area before possibly logging to mlflow
         "model_dir": "models/flowmodels1",  # local model storage area before possibly logging to mlflow
-        "dataset": "moons",  # "moons", "gmm", "mvn"
+        "dataset": "mvn",  # "moons", "gmm", "mvn"
         "num_gen_sims": 1000,  # number of new simulated data to generate
         "do_train": True,  # true = training, false = inference w existing model in model_dir
         "num_outliers_to_highlight": 10,  # set >0 to highlight lowest-density latent points
@@ -169,12 +170,16 @@ def main():
     )
     print("test_output_dataspace.png written.")
     likelihood_sample_count = min(4096, training_params["batch_size"] * 8)
+    report_path = os.path.join(
+        run_params["model_dir"], "change_of_variables_report.txt"
+    )
     likelihood_metrics = _run_change_of_variables_checks(
         flow_model,
         run_params["dataset"],
         training_params["batch_size"],
         num_data_samples=likelihood_sample_count,
         num_latent_samples=likelihood_sample_count,
+        report_path=report_path,
     )
     if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_open"):
         import mlflow
@@ -208,7 +213,7 @@ def _collect_samples_from_generator(generator, num_samples):
 
 def _describe_stats(label, values):
     arr = np.asarray(values, dtype=np.float64)
-    print(
+    return (
         f"    {label:<20} mean={arr.mean(): .6f}  std={arr.std(): .6f}  "
         f"min={arr.min(): .6f}  max={arr.max(): .6f}  max|.|={np.abs(arr).max(): .6f}"
     )
@@ -220,11 +225,19 @@ def _run_change_of_variables_checks(
     batch_size,
     num_data_samples=2048,
     num_latent_samples=2048,
+    report_path=None,
 ):
-    """Verify log p(x) consistency via change-of-variables in both directions."""
-    print("\nChange-of-variables consistency checks"
-          "to verify model implementation (but not training success):")
+    """Verify log p(x) consistency via change-of-variables in both directions.
+
+    When report_path is supplied, write the formatted table to disk instead of
+    emitting it to stdout.
+    """
     flat_dim = int(np.prod(flow_model.image_shape))
+    lines = []
+    lines.append(
+        "Change-of-variables consistency checks to verify model implementation "
+        "(but not training success):"
+    )
 
     # Data -> latent direction
     data_gen = get_data_generator(dataset=dataset_label, batch_size=batch_size)
@@ -240,10 +253,10 @@ def _run_change_of_variables_checks(
     log_px_via_change = log_pz + logdet_inverse
     diff_data = log_px_direct - log_px_via_change
 
-    print("  data → latent")
-    _describe_stats("log_px_direct", log_px_direct)
-    _describe_stats("log_pz+log|detJ|", log_px_via_change)
-    _describe_stats("difference", diff_data)
+    lines.append("  data → latent")
+    lines.append(_describe_stats("log_px_direct", log_px_direct))
+    lines.append(_describe_stats("log_pz+log|detJ|", log_px_via_change))
+    lines.append(_describe_stats("difference", diff_data))
 
     # Latent -> data direction
     base_dist = flow_model.flow.distribution
@@ -259,13 +272,21 @@ def _run_change_of_variables_checks(
     log_pz_via_change = log_px_direct_from_z + logdet_forward
     diff_pz = log_pz_direct - log_pz_via_change
 
-    print("  latent → data")
-    _describe_stats("log_px_direct", log_px_direct_from_z)
-    _describe_stats("log_pz-log|detJ|", log_px_via_change)
-    _describe_stats("difference", diff_latent)
-    _describe_stats("log_pz_direct", log_pz_direct)
-    _describe_stats("log_pz_via_x", log_pz_via_change)
-    _describe_stats("pz difference", diff_pz)
+    lines.append("  latent → data")
+    lines.append(_describe_stats("log_px_direct", log_px_direct_from_z))
+    lines.append(_describe_stats("log_pz-log|detJ|", log_px_via_change))
+    lines.append(_describe_stats("difference", diff_latent))
+    lines.append(_describe_stats("log_pz_direct", log_pz_direct))
+    lines.append(_describe_stats("log_pz_via_x", log_pz_via_change))
+    lines.append(_describe_stats("pz difference", diff_pz))
+
+    if report_path:
+        os.makedirs(os.path.dirname(report_path), exist_ok=True)
+        with open(report_path, "w", encoding="utf-8") as fp:
+            fp.write("\n".join(lines) + "\n")
+        print(f"Change-of-variables consistency checks written to {report_path}")
+    else:
+        print("\n".join(lines))
 
     return {
         "data_latent_diff_mean": float(np.mean(diff_data)),
