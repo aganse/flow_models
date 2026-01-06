@@ -431,29 +431,17 @@ def generate_sim_pts(
     sampling_mode="pca",
     cov_scale=1.0,
 ):
-    """Given latent space distribution params, and/or list of points to use
-    (regen_pts), map those through the model into images.
+    """Sample latent points and map them back through the model.
 
-    model: trained FlowModel object
-    num_gen_images: number of points to map (ie samples to generate from
-                    mean/reduced_cov or to draw from regen_pts)
-    The following 3 come out of imgs_to_gaussian_pts():
-      mean: numpy array of the full-dimensional vector mean point (ideally near 0)
-      reduced_cov: the cov matrix computed in the reduced space from pca
-      pca: the pca object from imgs_to_gaussian_pts()
-    batch_size: integer - note this is batches of generated images, not training data batches!
-    regen_pts: (optional) numpy array of training_pts for regenerating images for
-           first N of them, instead of generating random pts from mean & cov.
-           Technically doesn't have to be training_pts, could be any array of pts.
-    sampling_mode: "pca" (legacy PCA-based sampling) or "direct" (flow_model.sample()).
-    cov_scale: multiplicative scaling on reduced_cov when sampling via PCA.
+    Returns:
+        tuple(np.ndarray, np.ndarray): (simulated_data_points, latent_points)
     """
 
     num_batches = (num_gen_images + batch_size - 1) // batch_size
 
-    mapped_pts = []
+    data_batches = []
+    latent_batches = []
     for batch_idx in range(num_batches):
-        # Determine the number of images to generate in this batch
         current_batch_size = min(batch_size, num_gen_images - batch_idx * batch_size)
 
         if regen_pts is None:
@@ -471,21 +459,24 @@ def generate_sim_pts(
             else:
                 raise ValueError(f"Unknown sampling_mode '{sampling_mode}'")
         else:
-            # Get next batch worth of points from supplied training_points
             regen_tf = tf.convert_to_tensor(regen_pts, dtype=tf.float32)
             samples_tf = regen_tf[
                 (batch_idx * batch_size) : (batch_idx * batch_size + current_batch_size)
             ]
 
-        for i in range(current_batch_size):
-            # Map back through the invertible network
-            generated_image = model.inverse(samples_tf[i : i + 1])
-            generated_image = tf.reshape(generated_image, model.image_shape)
-            mapped_pts.append(generated_image.numpy())
+        latent_batches.append(np.asarray(samples_tf, dtype=np.float32))
 
-    sim_pts = np.array(mapped_pts)
+        generated_batch = model.inverse(samples_tf)
+        generated_batch = tf.reshape(
+            generated_batch,
+            (current_batch_size, *model.image_shape),
+        )
+        data_batches.append(generated_batch.numpy())
 
-    return sim_pts
+    sim_data_pts = np.concatenate(data_batches, axis=0)
+    sim_latent_pts = np.concatenate(latent_batches, axis=0)
+
+    return sim_data_pts, sim_latent_pts
 
 
 def add_text_to_image(image, text, font_size, color, bold):

@@ -17,16 +17,16 @@ def main():
     run_params = {
         "output_dir": "output",  # local artifacts storage area before possibly logging to mlflow
         "model_dir": "model/flowmodels1",  # local model storage area before possibly logging to mlflow
-        "dataset": "moons",  # "moons", "gmm", "mvn"
+        "dataset": "gmm",  # "moons", "gmm", "mvn"
         "num_gen_sims": 1000,  # number of new simulated data to generate
         "do_train": True,  # true = training, false = inference w existing model in model_dir
         "num_outliers_to_highlight": 10,  # set >0 to highlight lowest-density latent points
     }
     training_params = {
-        "num_epochs": 20,
+        "num_epochs": 50,
         "batch_size": 128,
         "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-        "learning_rate": 0.0001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+        "learning_rate": 0.00001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
         # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
         #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
         #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
@@ -76,7 +76,7 @@ def main():
                 side="data",
                 plotfile=datain_plot_path,
             )
-            print("test_input_dataspace.png written.")
+            print("trainpts_dataspace.png written.")
 
     # Train the model
     # ---------------
@@ -116,9 +116,9 @@ def main():
         ) = mapping_results
         mapped_training_inputs = None
 
-    highlight_latent_pts = None
-    highlight_data_pts = None
-    highlight_label = None
+    train_highlight_latent_pts = None
+    train_highlight_data_pts = None
+    train_highlight_label = None
     if highlight_count > 0:
         effective_highlight = min(highlight_count, mapped_training_pts.shape[0])
         base_dist = flow_model.flow.distribution
@@ -126,9 +126,9 @@ def main():
             tf.convert_to_tensor(mapped_training_pts, dtype=tf.float32)
         ).numpy()
         highlight_indices = np.argsort(latent_log_probs)[:effective_highlight]
-        highlight_latent_pts = mapped_training_pts[highlight_indices]
-        highlight_data_pts = mapped_training_inputs[highlight_indices]
-        highlight_label = (
+        train_highlight_latent_pts = mapped_training_pts[highlight_indices]
+        train_highlight_data_pts = mapped_training_inputs[highlight_indices]
+        train_highlight_label = (
             f"lowest {effective_highlight} latent\n"
             "density pts"
         )
@@ -140,30 +140,61 @@ def main():
         main_pts_label="mapped train pts",
         side="latent",
         plotfile=latent_plot_path,
-        highlight_pts=highlight_latent_pts,
-        highlight_label=highlight_label or "latent outliers",
+        highlight_pts=train_highlight_latent_pts,
+        highlight_label=train_highlight_label or "latent outliers",
         highlight_color="orange",
     )
-    print("test_output_latentspace.png written.")
-    if highlight_count > 0 and datain_plot_path and highlight_data_pts is not None:
+    print("trainpts_latentspace.png written.")
+    if (
+        highlight_count > 0
+        and datain_plot_path
+        and train_highlight_data_pts is not None
+    ):
         utils.plot_pts_2d(
             mapped_training_inputs,
             main_pts_label="original train pts",
             side="data",
             plotfile=datain_plot_path,
-            highlight_pts=highlight_data_pts,
-            highlight_label=highlight_label or "latent outliers",
+            highlight_pts=train_highlight_data_pts,
+            highlight_label=train_highlight_label or "latent outliers",
             highlight_color="orange",
         )
-        print("test_input_dataspace.png written.")
+        print("trainpts_dataspace.png written.")
     # map num_gen_sims sim pts from latent space thru flow_model to data space:
-    sim_pts = utils.generate_sim_pts(
+    sim_pts, sim_latent_pts = utils.generate_sim_pts(
         flow_model,
         run_params["num_gen_sims"],
         mean,
         cov,
         pca,
     )
+    sim_highlight_latent_pts = None
+    sim_highlight_data_pts = None
+    sim_highlight_label = None
+    if highlight_count > 0:
+        effective_sim_highlight = min(highlight_count, sim_latent_pts.shape[0])
+        sim_latent_log_probs = base_dist.log_prob(
+            tf.convert_to_tensor(sim_latent_pts, dtype=tf.float32)
+        ).numpy()
+        sim_highlight_indices = np.argsort(sim_latent_log_probs)[:effective_sim_highlight]
+        sim_highlight_latent_pts = sim_latent_pts[sim_highlight_indices]
+        sim_highlight_data_pts = sim_pts[sim_highlight_indices]
+        sim_highlight_label = (
+            f"lowest {effective_sim_highlight} simulated\n"
+            "latent density pts"
+        )
+
+    sim_latent_plot_path = run_params["output_dir"] + "/simpts_latentspace.png"
+    utils.plot_pts_2d(
+        sim_latent_pts,
+        main_pts_label="simulated latent pts",
+        side="latent",
+        plotfile=sim_latent_plot_path,
+        highlight_pts=sim_highlight_latent_pts,
+        highlight_label=sim_highlight_label or "sim latent outliers",
+        highlight_color="lightgreen",
+    )
+    print("simpts_latentspace.png written.")
     # data space plot:
     dataout_plot_path = run_params["output_dir"] + "/simpts_dataspace.png"
     utils.plot_pts_2d(
@@ -171,8 +202,11 @@ def main():
         main_pts_label="mapped sim pts",
         side="data",
         plotfile=dataout_plot_path,
+        highlight_pts=sim_highlight_data_pts,
+        highlight_label=sim_highlight_label or "sim data outliers",
+        highlight_color="lightgreen",
     )
-    print("test_output_dataspace.png written.")
+    print("simpts_dataspace.png written.")
     likelihood_sample_count = min(4096, training_params["batch_size"] * 8)
     report_path = os.path.join(
         run_params["model_dir"], "change_of_variables_report.txt"
@@ -189,7 +223,7 @@ def main():
         import mlflow
         if likelihood_metrics:
             mlflow.log_metrics(likelihood_metrics)
-        plot_paths = [latent_plot_path, dataout_plot_path]
+        plot_paths = [latent_plot_path, sim_latent_plot_path, dataout_plot_path]
         if datain_plot_path:
             plot_paths.append(datain_plot_path)
         for artifact_path in plot_paths:
