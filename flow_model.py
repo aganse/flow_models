@@ -132,10 +132,15 @@ class ShiftAndLogScaleDense(tf.keras.layers.Layer):
         hidden_layers=None,
         kernel_initializer="glorot_uniform",
         kernel_regularizer=None,
-        leakyrelualpha=0.01
+        leakyrelualpha=0.01,
+        log_scale_clip=None,
     ):
         super().__init__(name=name)
         self.output_dim = int(output_dim)
+        if log_scale_clip is None or log_scale_clip <= 0:
+            self.log_scale_clip = None
+        else:
+            self.log_scale_clip = float(log_scale_clip)
         dense_layers = []
         hidden_layers = hidden_layers or []
         for nodes in hidden_layers:
@@ -155,7 +160,14 @@ class ShiftAndLogScaleDense(tf.keras.layers.Layer):
 
     def call(self, inputs, output_units=None, **kwargs):
         del output_units
-        return self.nn(inputs)
+        outputs = self.nn(inputs)
+        if self.log_scale_clip is not None:
+            shift, log_scale = tf.split(outputs, num_or_size_splits=2, axis=-1)
+            log_scale = tf.clip_by_value(
+                log_scale, -self.log_scale_clip, self.log_scale_clip
+            )
+            outputs = tf.concat([shift, log_scale], axis=-1)
+        return outputs
 
     def compute_output_shape(self, input_shape):
         return tf.TensorShape((input_shape[0], 2 * self.output_dim))
@@ -177,6 +189,7 @@ class FlowModel(tf.keras.Model):
         bijector="realnvp-based",  # or "glow"
         grad_norm_thresh=None,
         reg_level=0.01,
+        log_scale_clip=None,
     ):
         """RealNVP-based flow architecture, using TFP as much as possible so the
         architectures don't *exactly* match the papers but are pretty close.
@@ -185,6 +198,9 @@ class FlowModel(tf.keras.Model):
         super().__init__()
         self.image_shape = image_shape
         self.grad_norm_thresh = grad_norm_thresh
+        self.log_scale_clip = (
+            None if log_scale_clip is None or log_scale_clip <= 0 else float(log_scale_clip)
+        )
         self.shift_and_log_scale_layers = []
         flat_image_size = np.prod(image_shape)  # flattened size
 
@@ -208,6 +224,7 @@ class FlowModel(tf.keras.Model):
                     hidden_layers=hidden_layers,
                     kernel_initializer=tf.keras.initializers.GlorotUniform(),
                     kernel_regularizer=tf.keras.regularizers.l2(reg_level),
+                    log_scale_clip=log_scale_clip,
                 )
 
                 def shift_log_scale_fn_factory(layer):
@@ -230,6 +247,7 @@ class FlowModel(tf.keras.Model):
                         #    kernel_initializer=tf.keras.initializers.GlorotUniform(),
                         #    kernel_regularizer=tf.keras.regularizers.l2(reg_level),
                         # ),
+                        # fyi log_scale_clip_fn doesn't exist in this version of tfb:
                         # log_scale_clip_fn=lambda log_s: tf.clip_by_value(log_s, -5.0, 5.0),
                         validate_args=validate_args,
                         name="{}_{}_RealNVP".format(layer_name, i),
@@ -387,7 +405,8 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
     flow_model = FlowModel(
         **model_arch_params,
         reg_level=training_params["reg_level"],
-        grad_norm_thresh=training_params["grad_norm_thresh"]
+        grad_norm_thresh=training_params["grad_norm_thresh"],
+        log_scale_clip=training_params.get("log_scale_clip"),
     )
     flow_model.build(input_shape=(None, *model_arch_params["image_shape"]))
     print("")

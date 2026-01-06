@@ -26,15 +26,19 @@ def main():
         "num_epochs": 50,
         "batch_size": 128,
         "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-        "learning_rate": 0.00001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
-        # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
+        "learning_rate": 1e-5,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+        # "learning_rate": [0.00005, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
+        # "learning_rate": [0.00001, 50, 0.90],  # [initial_rate, decay_steps, decay_rate]
+        #     steps_per_epoch = num_data_input//batch_size
+        #     step = steps_per_epoch * desired_epoch_of_decayed_lr
         #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
-        #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
+        #     ie decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
         "early_stopping_patience": 0,  # value <=0 turns off early_stopping
         # note current model arch has 534,544 params:
-        "num_data_input": 100000,  # num training data pts or images (whether pts or files)
+        "num_data_input": 50000,  # num training data pts or images (whether pts or files)
         "augmentation_factor": 1,  # set >1 to have augmentation turned on
         "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
+        "log_scale_clip": 0,  # clip log-scale outputs to [-value, value]; <=0 disables
         "jit_compile": True,  # boolean, normally True but sometimes useful in debugging
         "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
         "tracking_port": 5000,  # typ 6006 for tensorboard and 5000 for mlflow
