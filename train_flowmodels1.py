@@ -25,20 +25,18 @@ def main():
     training_params = {
         "num_epochs": 50,
         "batch_size": 128,
-        "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-        "learning_rate": 1e-5,  # scaler -> constant learning rate; vector of 3 -> lr schedule
-        # "learning_rate": [0.00005, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
-        # "learning_rate": [0.00001, 50, 0.90],  # [initial_rate, decay_steps, decay_rate]
+        "reg_level": 1e-5,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
+        # "learning_rate": 1e-4,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+        "learning_rate": [1e-4, 750, 0.90],  # [initial_rate, decay_steps, decay_rate]
         #     steps_per_epoch = num_data_input//batch_size
         #     step = steps_per_epoch * desired_epoch_of_decayed_lr
         #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
         #     ie decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
-        "early_stopping_patience": 0,  # value <=0 turns off early_stopping
-        # note current model arch has 534,544 params:
-        "num_data_input": 50000,  # num training data pts or images (whether pts or files)
+        "early_stopping_patience": 10,  # value <=0 turns off early_stopping
+        "num_data_input": 100000,  # num training data pts or images (whether pts or files)
         "augmentation_factor": 1,  # set >1 to have augmentation turned on
-        "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
-        "log_scale_clip": 0,  # clip log-scale outputs to [-value, value]; <=0 disables
+        "grad_norm_thresh": 25,  # if not None, clip norm of gradients at this thresh
+        "log_scale_clip": 5,  # clip log-scale outputs to [-value, value]; <=0 disables
         "jit_compile": True,  # boolean, normally True but sometimes useful in debugging
         "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
         "tracking_port": 5000,  # typ 6006 for tensorboard and 5000 for mlflow
@@ -47,8 +45,8 @@ def main():
     model_arch_params = {
         "image_shape": (2,),  # 2D points with (no color labels in this run)
         "bijector": "realnvp-based",
-        "flow_steps": 8,  # 8 number of realnvp-based affine coupling layers
-        "hidden_layers": [256, 256],  # 256,256 nodes/denselayer or filters/cnnlayer in affine coupling layers
+        "flow_steps": 12,  # 8 number of realnvp-based affine coupling layers
+        "hidden_layers": [512, 512],  # 256,256 nodes/denselayer or filters/cnnlayer in affine coupling layers
         "validate_args": True,
     }
     # List the param settings:
@@ -97,6 +95,7 @@ def main():
         flow_model,
         train_generator,
         1000,
+        neigvals=None,  # no pca for this 2D problem
         return_input_samples=highlight_count > 0,
     )
     if highlight_count > 0:
@@ -168,9 +167,7 @@ def main():
     sim_pts, sim_latent_pts = utils.generate_sim_pts(
         flow_model,
         run_params["num_gen_sims"],
-        mean,
-        cov,
-        pca,
+        sampling_mode="direct",
     )
     sim_highlight_latent_pts = None
     sim_highlight_data_pts = None

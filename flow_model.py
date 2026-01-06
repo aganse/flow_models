@@ -390,11 +390,17 @@ class FlowModel(tf.keras.Model):
             outdict.update({
                 "grad_norm": postclip_grad_norm,
             })
-        if isinstance(
-            self.optimizer.learning_rate, tf.keras.optimizers.schedules.LearningRateSchedule
-        ):
-            current_lr = self.optimizer.learning_rate(self.optimizer.iterations)
-            outdict.update({"learning_rate": current_lr})
+        # if isinstance(
+        #     self.optimizer.learning_rate, tf.keras.optimizers.schedules.LearningRateSchedule
+        # ):
+        #     current_lr = self.optimizer.learning_rate(self.optimizer.iterations)
+        #     outdict.update({"learning_rate": current_lr})
+
+        current_lr = self.optimizer.learning_rate
+        if callable(current_lr):
+            current_lr = current_lr(self.optimizer.iterations)
+        outdict["learning_rate"] = tf.convert_to_tensor(current_lr)
+
         return outdict
 
 

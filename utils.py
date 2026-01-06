@@ -423,9 +423,9 @@ def generate_imgs_in_batches(
 def generate_sim_pts(
     model,
     num_gen_images,
-    mean,
-    reduced_cov,
-    pca,
+    mean=None,
+    reduced_cov=None,
+    pca=None,
     regen_pts=None,
     batch_size=10,
     sampling_mode="pca",
