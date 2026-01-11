@@ -173,6 +173,7 @@ class ShiftAndLogScaleDense(tf.keras.layers.Layer):
         return tf.TensorShape((input_shape[0], 2 * self.output_dim))
 
 
+@tf.keras.utils.register_keras_serializable(package="flow_model")
 class FlowModel(tf.keras.Model):
     """
     Variations of normalizing flow models including RealNVP and Glow;
@@ -197,7 +198,12 @@ class FlowModel(tf.keras.Model):
 
         super().__init__()
         self.image_shape = image_shape
+        self.hidden_layers = list(hidden_layers) if hidden_layers is not None else []
+        self.flow_steps = flow_steps
+        self.validate_args = validate_args
+        self.bijector_type = bijector
         self.grad_norm_thresh = grad_norm_thresh
+        self.reg_level = reg_level
         self.log_scale_clip = (
             None if log_scale_clip is None or log_scale_clip <= 0 else float(log_scale_clip)
         )
@@ -293,6 +299,32 @@ class FlowModel(tf.keras.Model):
             bijector=self.flow_bijector,
             name="Top_Level_Flow_Model",
         )
+
+    def get_config(self):
+        """Return serializable config so `to_json` captures runtime params."""
+        base_config = super().get_config()
+        base_config.update(
+            {
+                "image_shape": tuple(self.image_shape),
+                "hidden_layers": list(self.hidden_layers),
+                "flow_steps": int(self.flow_steps),
+                "validate_args": bool(self.validate_args),
+                "bijector": str(self.bijector_type),
+                "grad_norm_thresh": self.grad_norm_thresh,
+                "reg_level": float(self.reg_level) if self.reg_level is not None else None,
+                "log_scale_clip": self.log_scale_clip,
+            }
+        )
+        return base_config
+
+    @classmethod
+    def from_config(cls, config):
+        # Pop base Keras Model config entries that FlowModel.__init__ doesn't accept.
+        config = dict(config)
+        config.pop("name", None)
+        config.pop("trainable", None)
+        config.pop("dtype", None)
+        return cls(**config)
 
     def print_vars(self):
         """More detailed output per model layers, mainly for debugging purposes.
