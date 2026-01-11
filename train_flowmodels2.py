@@ -26,35 +26,40 @@ run_params = {
     "do_imgs_and_points": True,  # generate scatterplots, sim images, etc:  not dataset specific
     "do_interp": False,  # interp sim images between some training points:  cat dataset specific
     # Sampling-related knobs:
-    "sampling_mode": "direct",  # "pca" (legacy) or "direct" (from N(0,I)) for sim generation
-    "cov_scale": 0.05,  # multiplier on reduced_cov when sampling via PCA (legacy was 0.25)
-    "pca_n_components": None,  # legacy=100; None to skip PCA in stats/sampling; higher value uses more PCs
+    "sampling_mode": "pca",  # "pca" (legacy) or "direct" (from N(0,I)) for sim generation
+    "cov_scale": 0.25,  # multiplier on reduced_cov when sampling via PCA (legacy was 0.25)
+    "pca_n_components": 200,  # legacy=100; None to skip PCA in stats/sampling; higher value uses more PCs
     "pca_solver": "randomized",  # "auto" or "randomized": "randomized" to scale PCA to larger component counts
-    "regen_source": "flow_base",  # "pca_stats", "flow_base", or "train_pts" for sim images
+    "regen_source": "pca_stats",  # "pca_stats", "flow_base", or "train_pts" for sim images
 }
 training_params = {
-    "num_epochs": 20,
-    "batch_size": 64,
-    "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-    "learning_rate": 0.00001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+    "num_epochs": 50,
+    "batch_size": 128,
+    "reg_level": 1e-5,  # regularization level for the L2 reg in realNVP hidden layers
+    "learning_rate": 1e-5,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+    # "learning_rate": [1e-4, 175, 0.90],  # 1e-6 at 10th epoch  # [initial_rate, decay_steps, decay_rate]
+    # "learning_rate": [1e-4, 750, 0.90],  # 1e-5 at 20th epoch  # [initial_rate, decay_steps, decay_rate]
+    # "learning_rate": [1e-4, 350, 0.90],  # 1e-6 at 20th epoch  # [initial_rate, decay_steps, decay_rate]
     # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
     #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
     #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
     "early_stopping_patience": 10,  # value <=0 turns off early_stopping
     # note current model arch has 534,544 params:
-    "num_data_input": 5000,  # num training data pts or images (whether pts or files)
-    "augmentation_factor": 1,  # set >1 to have augmentation turned on
-    "grad_norm_thresh": None,  # if not None, clip norm of gradients at this thresh
+    "num_data_input": 5100,  # num training data pts or images (whether pts or files)
+    "augmentation_factor": 10,  # set >1 to have augmentation turned on
+    "grad_norm_thresh": 20,  # if not None, clip norm of gradients at this thresh
+    "log_scale_clip": 4,  # clip log-scale outputs to [-value, value]; <=0 disables
     "jit_compile": True,  # boolean, normally True but sometimes useful in debugging
     "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
     "tracking_port": 5000,  # typ 6006 for tensorboard and 5000 for mlflow
     "tracking_expt_name": "flowmodels2",
+    "save_model_weights": False,
 }
 model_arch_params = {
     "image_shape": (128, 128, 3),  # (height, width, channels) of images
     "bijector": "realnvp-based",  # "realnvp-based" or "glow"
-    "flow_steps": 6,  # number of realnvp-based affine coupling layers
-    "hidden_layers": [512, 512],  # nodes/layer in realnvp-based affine coupling layers
+    "flow_steps": 18,  # number of realnvp-based affine coupling layers
+    "hidden_layers": [512, 512, 512],  # nodes/layer in realnvp-based affine coupling layers
     "validate_args": True,
 }
 # List the param settings:

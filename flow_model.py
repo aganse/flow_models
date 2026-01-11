@@ -528,10 +528,13 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         )
         print("Done training model.", flush=True)
         os.makedirs(run_params["model_dir"], exist_ok=True)
-        # save the model weights:
-        weights_path = os.path.join(run_params["model_dir"], "model_weights.weights.h5")
-        flow_model.save_weights(weights_path)
-        print("Model weights saved to file.\n", flush=True)
+
+        if training_params["save_model_weights"]:
+            # save the model weights:
+            weights_path = os.path.join(run_params["model_dir"], "model_weights.weights.h5")
+            flow_model.save_weights(weights_path)
+            print("Model weights saved to file.\n", flush=True)
+
         # save the txt summary description of model arch:
         summary_path = _capture_and_save_summary(
             flow_model,
