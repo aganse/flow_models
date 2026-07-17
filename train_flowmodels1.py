@@ -45,8 +45,9 @@ def main():
     model_arch_params = {
         "image_shape": (2,),  # 2D points with (no color labels in this run)
         "bijector": "realnvp-based",
-        "flow_steps": 12,  # 8 number of realnvp-based affine coupling layers
-        "hidden_layers": [512, 512],  # 256,256 nodes/denselayer or filters/cnnlayer in affine coupling layers
+        # realnvp-based params:
+        "realnvp_flow_steps": 12,  # 8 number of realnvp-based affine coupling layers
+        "realnvp_hidden_layers": [512, 512],  # 256,256 nodes/denselayer or filters/cnnlayer in affine coupling layers
         "validate_args": True,
     }
     # List the param settings:

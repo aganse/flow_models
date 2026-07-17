@@ -365,6 +365,15 @@ def image_files_to_data_generator(filenames, target_size=(224, 224), batch_size=
     return generator
 
 
+def dequantize_generator(gen):
+    """Wrap a batch generator to add dequantization noise U(0, 1/255) per pixel.
+    Converts discrete pixel values (multiples of 1/255) into a continuous
+    distribution, which is standard practice for training flow models on images.
+    """
+    for batch in gen:
+        yield batch + np.random.uniform(0, 1.0 / 255, batch.shape).astype(np.float32)
+
+
 def infinite_generator(generator):
     """Ensures train_generator repeats indefinitely so can use augmentation.
     (it isn't doing so without this - why not?)
@@ -487,7 +496,7 @@ def get_data_generator(
                 class_mode=None,
                 shuffle=False,  # True possibly helpful for training but pain for debug/analysis
             )
-            return output
+            return dequantize_generator(output)
 
     elif dataset.lower() == "invkin" or dataset.lower() == "glacgrav":
         raise ValueError("These will get implemented in future, but are not yet...")

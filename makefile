@@ -34,8 +34,11 @@ else
 	@echo "Not in a python virtual environment. Skipping pip install of dev packages."
 endif
 
-unittests:                                                            
-	python -m unittest -v                                             
+unittests:
+	python -m unittest -v
+
+lint:
+	flake8 .
 
 build-cpu:
 	# Building with CPU package of TF for dev/testing on a light-compute instance.
@@ -52,4 +55,4 @@ run-local:
 
 
 # ensures all entries run every time since these aren't files
-.PHONY: create-env install-dev unittests build-cpu build-gpu run-local
+.PHONY: create-env install-dev unittests lint build-cpu build-gpu run-local

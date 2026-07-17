@@ -125,7 +125,7 @@ def imgs_to_gaussian_pts(
     return gaussian_points, mean_full, cov_reduced, pca, top_outliers, closest_to_mean
 
 
-def plot_pts_2d(
+def plot_pts_2d(  # noqa: C901
     train_pts,
     plotfile="compare_points_2d.png",
     mean=None,

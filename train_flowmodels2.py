@@ -33,10 +33,10 @@ run_params = {
     "regen_source": "flow_base",  # "pca_stats", "flow_base", or "train_pts" for sim images
 }
 training_params = {
-    "num_epochs": 20,
+    "num_epochs": 100,
     "batch_size": 64,
     "reg_level": 0.0,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-    "learning_rate": 0.00001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+    "learning_rate": 0.0001,  # scaler -> constant learning rate; vector of 3 -> lr schedule
     # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
     #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
     #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
@@ -53,8 +53,14 @@ training_params = {
 model_arch_params = {
     "image_shape": (128, 128, 3),  # (height, width, channels) of images
     "bijector": "realnvp-based",  # "realnvp-based" or "glow"
-    "flow_steps": 6,  # number of realnvp-based affine coupling layers
-    "hidden_layers": [512, 512],  # nodes/layer in realnvp-based affine coupling layers
+    # realnvp-based params:
+    "realnvp_flow_steps": 6,  # number of realnvp-based affine coupling layers
+    "realnvp_hidden_layers": [512, 512],  # nodes/layer in realnvp-based affine coupling layers
+    "realnvp_permutation": "alternating",  # "alternating" or "random" permutation between coupling layers
+    # glow params:
+    "glow_num_blocks": 3,  # number of multi-scale levels (need >=3 for 128x128)
+    "glow_steps_per_block": 8,  # flow steps per level (paper uses 32; 8 is a lighter start)
+    "glow_num_hidden": 256,  # filters in glow coupling CNN (paper uses 400)
     "validate_args": True,
 }
 # List the param settings:

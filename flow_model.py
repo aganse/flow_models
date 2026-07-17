@@ -11,6 +11,7 @@ flow_model.compile(optimizer=Adam(learning_rate=0.0001), metrics=[NegLogLikeliho
 flow_model.fit(train_data_generator, epochs=num_epochs, steps_per_epoch=steps_per_epoch)
 """
 
+import functools
 import io
 import os
 from datetime import datetime
@@ -183,10 +184,14 @@ class FlowModel(tf.keras.Model):
     def __init__(
         self,
         image_shape=(256, 256, 3),
-        hidden_layers=[256, 256],
-        flow_steps=4,
+        bijector="realnvp-based",  # "realnvp-based" or "glow"
+        realnvp_flow_steps=4,
+        realnvp_hidden_layers=None,
+        realnvp_permutation="alternating",
+        glow_num_blocks=3,
+        glow_steps_per_block=8,
+        glow_num_hidden=256,
         validate_args=False,
-        bijector="realnvp-based",  # or "glow"
         grad_norm_thresh=None,
         reg_level=0.01,
         log_scale_clip=None,
@@ -197,6 +202,7 @@ class FlowModel(tf.keras.Model):
 
         super().__init__()
         self.image_shape = image_shape
+        self.bijector_type = bijector
         self.grad_norm_thresh = grad_norm_thresh
         self.log_scale_clip = (
             None if log_scale_clip is None or log_scale_clip <= 0 else float(log_scale_clip)
@@ -208,20 +214,25 @@ class FlowModel(tf.keras.Model):
 
             self.flow_bijector = tfb.Glow(
                 output_shape=self.image_shape,
-                coupling_bijector_fn=tfb.GlowDefaultNetwork,
-                exit_bijector_fn=tfb.GlowDefaultExitNetwork
+                num_glow_blocks=glow_num_blocks,
+                num_steps_per_block=glow_steps_per_block,
+                coupling_bijector_fn=functools.partial(
+                    tfb.GlowDefaultNetwork, num_hidden=glow_num_hidden
+                ),
+                exit_bijector_fn=tfb.GlowDefaultExitNetwork,
             )
 
         elif bijector == "realnvp-based":
 
+            realnvp_hidden_layers = realnvp_hidden_layers or [256, 256]
             layer_name = "Flow_step"
             flow_step_list = []
-            for i in range(flow_steps):
+            for i in range(realnvp_flow_steps):
                 # shift_log_scale_layer = ShiftAndLogScaleCNN(
                 shift_log_scale_layer = ShiftAndLogScaleDense(
                     output_dim=flat_image_size // 2,
                     name="{}_{}_shift_log_scale_layer".format(layer_name, i),
-                    hidden_layers=hidden_layers,
+                    hidden_layers=realnvp_hidden_layers,
                     kernel_initializer=tf.keras.initializers.GlorotUniform(),
                     kernel_regularizer=tf.keras.regularizers.l2(reg_level),
                     log_scale_clip=log_scale_clip,
@@ -253,14 +264,16 @@ class FlowModel(tf.keras.Model):
                         name="{}_{}_RealNVP".format(layer_name, i),
                     )
                 )
+                if realnvp_permutation == "random":
+                    perm = list(np.random.permutation(flat_image_size))
+                else:  # "alternating"
+                    perm = (
+                        list(reversed(range(flat_image_size)))
+                        if i % 2 == 0 else list(range(flat_image_size))
+                    )
                 flow_step_list.append(
                     tfb.Permute(
-                        # Simply alternating order back and forth layer to layer:
-                        permutation=(
-                            list(reversed(range(flat_image_size)))
-                            if i % 2 == 0 else range(flat_image_size)
-                        ),
-                        # permutation=list(np.random.permutation(flat_image_size)),
+                        permutation=perm,
                         validate_args=validate_args,
                         name="{}_{}_Permute".format(layer_name, i),
                     )
@@ -324,7 +337,10 @@ class FlowModel(tf.keras.Model):
     @tf.function
     def call(self, inputs):
         """Images to Gaussian latent points."""
-        inputs = tf.reshape(inputs, (-1, np.prod(inputs.shape[1:])))
+        if self.bijector_type == "glow":
+            inputs = tf.reshape(inputs, (-1, *self.image_shape))
+        else:
+            inputs = tf.reshape(inputs, (-1, np.prod(inputs.shape[1:])))
         return self.flow.bijector.inverse(inputs)
 
     @tf.function
@@ -341,7 +357,10 @@ class FlowModel(tf.keras.Model):
         over the current batch.
         """
         images = data
-        images = tf.reshape(images, (-1, np.prod(self.image_shape)))
+        if self.bijector_type == "glow":
+            images = tf.reshape(images, (-1, *self.image_shape))
+        else:
+            images = tf.reshape(images, (-1, np.prod(self.image_shape)))
         with tf.GradientTape() as tape:
 
             log_prob = self.flow.log_prob(images)
@@ -504,6 +523,7 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             callbacks.append(
                 MLflowLoggingCallback()
             )
+
         def _train_data_gen():
             for batch in infinite_generator(train_gen):
                 if isinstance(batch, (tuple, list)):

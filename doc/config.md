@@ -41,6 +41,7 @@ document focuses on intent and usage.
 | `num_data_input` | Approximate number of training samples consumed per epoch (used to derive `steps_per_epoch`). | 1,2 |
 | `augmentation_factor` | Multiplier for virtual dataset size when augmentation is enabled by the data generator. | 1,2 |
 | `grad_norm_thresh` | Global gradient-norm clipping threshold; `None` leaves gradients unclipped. | 1,2 |
+| `log_scale_clip` | Clips the log-scale output of RealNVP coupling networks to `[-value, value]`; `<=0` or absent disables clipping. | 1 |
 | `jit_compile` | Enables/disables XLA JIT compilation for the Keras training step. | 1,2 |
 | `tracking_tool` | Metric logging backend (`"mlflow"` or `"tensorboard"`); `None` skips tracking callbacks. | 1,2 |
 | `tracking_port` | Port used when launching the selected tracking tool locally. | 1,2 |
@@ -52,9 +53,13 @@ document focuses on intent and usage.
 | --- | --- | --- |
 | `image_shape` | Shape of the input samples; `(2,)` for 2D points or `(H, W, C)` for image inputs. | 1,2 |
 | `bijector` | Choice of flow architecture (`"realnvp-based"` or `"glow"`). | 1,2 |
-| `flow_steps` | Number of coupling/permute blocks chained in the flow. | 1,2 |
-| `hidden_layers` | Sizes of hidden layers inside the shift/log-scale networks for each coupling block. | 1,2 |
 | `validate_args` | Propagated to TensorFlow Probability bijectors to enable argument validation checks. | 1,2 |
+| `realnvp_flow_steps` | Number of RealNVP coupling/permute blocks chained in the flow. Only used when `bijector="realnvp-based"`. | 1,2 |
+| `realnvp_hidden_layers` | Sizes of hidden Dense layers inside the shift/log-scale networks for each RealNVP coupling block. Only used when `bijector="realnvp-based"`. | 1,2 |
+| `realnvp_permutation` | Permutation strategy between RealNVP coupling blocks: `"alternating"` (reverse/identity alternation) or `"random"` (random shuffle per block). Only used when `bijector="realnvp-based"`. | 1,2 |
+| `glow_num_blocks` | Number of multi-scale levels in the Glow architecture. For 128×128 images, at least 3 is recommended. Only used when `bijector="glow"`. | 2 |
+| `glow_steps_per_block` | Number of flow steps per Glow level. The paper uses 32; 8 is a lighter starting point. Only used when `bijector="glow"`. | 2 |
+| `glow_num_hidden` | Number of filters in the Glow coupling CNN at each level. The paper uses 400; 128–256 is a lighter starting point. Only used when `bijector="glow"`. | 2 |
 
 Refer back to the individual training scripts for concrete default settings and
 dataset-specific notes.
