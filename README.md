@@ -126,6 +126,20 @@ available, at
     description of every user-facing parameter across the training scripts.
 4. Run `python train_flowmodelsN.py` (again where `N` is the application number).
 
+###
+
+If both `model/model_arch.json` and `model/model_weights.weights.h5` are being
+saved (note the latter may not be depending on the value of
+training_params["save_model_weights"] because that weights file can be huge),
+the model object could be reinstantiated via:
+```
+from tensorflow.keras.models import model_from_json
+with open("model/model_arch.json") as f:
+    model = model_from_json(f.read(), custom_objects={"FlowModel": FlowModel})
+model.load_weights("model/model_weights.weights.h5")
+```
+
+
 ### C. Key references
 
 * Distribution mapping and generative image modeling with INNs

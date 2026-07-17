@@ -41,6 +41,7 @@ def main():
         "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
         "tracking_port": 5000,  # typ 6006 for tensorboard and 5000 for mlflow
         "tracking_expt_name": "flowmodels1",
+        "save_model_weights": False,
     }
     model_arch_params = {
         "image_shape": (2,),  # 2D points with (no color labels in this run)

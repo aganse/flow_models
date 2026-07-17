@@ -174,6 +174,7 @@ class ShiftAndLogScaleDense(tf.keras.layers.Layer):
         return tf.TensorShape((input_shape[0], 2 * self.output_dim))
 
 
+@tf.keras.utils.register_keras_serializable(package="flow_model")
 class FlowModel(tf.keras.Model):
     """
     Variations of normalizing flow models including RealNVP and Glow;
@@ -203,7 +204,15 @@ class FlowModel(tf.keras.Model):
         super().__init__()
         self.image_shape = image_shape
         self.bijector_type = bijector
+        self.validate_args = validate_args
+        self.realnvp_flow_steps = realnvp_flow_steps
+        self.realnvp_hidden_layers = list(realnvp_hidden_layers) if realnvp_hidden_layers is not None else []
+        self.realnvp_permutation = realnvp_permutation
+        self.glow_num_blocks = glow_num_blocks
+        self.glow_steps_per_block = glow_steps_per_block
+        self.glow_num_hidden = glow_num_hidden
         self.grad_norm_thresh = grad_norm_thresh
+        self.reg_level = reg_level
         self.log_scale_clip = (
             None if log_scale_clip is None or log_scale_clip <= 0 else float(log_scale_clip)
         )
@@ -306,6 +315,36 @@ class FlowModel(tf.keras.Model):
             bijector=self.flow_bijector,
             name="Top_Level_Flow_Model",
         )
+
+    def get_config(self):
+        """Return serializable config so `to_json` captures runtime params."""
+        base_config = super().get_config()
+        base_config.update(
+            {
+                "image_shape": tuple(self.image_shape),
+                "bijector": str(self.bijector_type),
+                "validate_args": bool(self.validate_args),
+                "realnvp_flow_steps": int(self.realnvp_flow_steps),
+                "realnvp_hidden_layers": list(self.realnvp_hidden_layers),
+                "realnvp_permutation": str(self.realnvp_permutation),
+                "glow_num_blocks": int(self.glow_num_blocks),
+                "glow_steps_per_block": int(self.glow_steps_per_block),
+                "glow_num_hidden": int(self.glow_num_hidden),
+                "grad_norm_thresh": self.grad_norm_thresh,
+                "reg_level": float(self.reg_level) if self.reg_level is not None else None,
+                "log_scale_clip": self.log_scale_clip,
+            }
+        )
+        return base_config
+
+    @classmethod
+    def from_config(cls, config):
+        # Pop base Keras Model config entries that FlowModel.__init__ doesn't accept.
+        config = dict(config)
+        config.pop("name", None)
+        config.pop("trainable", None)
+        config.pop("dtype", None)
+        return cls(**config)
 
     def print_vars(self):
         """More detailed output per model layers, mainly for debugging purposes.
@@ -423,7 +462,7 @@ class FlowModel(tf.keras.Model):
         return outdict
 
 
-def default_training_sequence(train_gen, run_params, training_params, model_arch_params):
+def default_training_sequence(train_gen, run_params, training_params, model_arch_params):  # noqa: C901
     """A prefab training configuration for flow_models to speed/ease getting going,
     especially as I found that Keras and TFP don't play totally well together."""
 
@@ -548,10 +587,13 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         )
         print("Done training model.", flush=True)
         os.makedirs(run_params["model_dir"], exist_ok=True)
-        # save the model weights:
-        weights_path = os.path.join(run_params["model_dir"], "model_weights.weights.h5")
-        flow_model.save_weights(weights_path)
-        print("Model weights saved to file.\n", flush=True)
+
+        if training_params["save_model_weights"]:
+            # save the model weights:
+            weights_path = os.path.join(run_params["model_dir"], "model_weights.weights.h5")
+            flow_model.save_weights(weights_path)
+            print("Model weights saved to file.\n", flush=True)
+
         # save the txt summary description of model arch:
         summary_path = _capture_and_save_summary(
             flow_model,
