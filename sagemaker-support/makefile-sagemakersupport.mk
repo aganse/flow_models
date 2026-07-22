@@ -17,7 +17,21 @@
 SM_INSTANCE_TYPE=ml.g4dn.xlarge
 SM_VOLUME_SIZE=50
 SM_MAX_RUNTIME=86400
+SM_MAX_WAIT ?= 90000
 SM_JOB_PREFIX=flowmodels
+
+# Spot instance flags: set when SPOT=1 is passed on the command line.
+# SM_MAX_WAIT is the total wall-clock deadline including interruption waits
+# (must be >= SM_MAX_RUNTIME); override with e.g. make sm-run SPOT=1 SM_MAX_WAIT=36000
+ifdef SPOT
+SM_SPOT_FLAGS := --enable-managed-spot-training \
+  --checkpoint-config S3Uri=$(WEIGHTS_PATH)/checkpoints/
+SM_STOPPING := --stopping-condition \
+  MaxRuntimeInSeconds=$(SM_MAX_RUNTIME),MaxWaitTimeInSeconds=$(SM_MAX_WAIT)
+else
+SM_SPOT_FLAGS :=
+SM_STOPPING := --stopping-condition MaxRuntimeInSeconds=$(SM_MAX_RUNTIME)
+endif
 
 
 # Assembled from env vars (sensitive seeds come from environment):
@@ -63,7 +77,8 @@ endif
 	  --output-data-config S3OutputPath=${WEIGHTS_PATH} \
 	  --resource-config \
 	    InstanceType=$(SM_INSTANCE_TYPE),InstanceCount=1,VolumeSizeInGB=$(SM_VOLUME_SIZE) \
-	  --stopping-condition MaxRuntimeInSeconds=$(SM_MAX_RUNTIME) \
+	  $(SM_SPOT_FLAGS) \
+	  $(SM_STOPPING) \
 	  --hyper-parameters "{\"params\":\"$(PARAMS_BLOB)\"}" \
 	  --environment '{"TRAINING_SCRIPT":"$(SCRIPT)","MLFLOW_TRACKING_URI":"${MLFLOW_TRACKING_URI}","IMAGES_PATH":"/opt/ml/input/data/training","WEIGHTS_PATH":"${WEIGHTS_PATH}"}' \
 	  --vpc-config Subnets=${SM_SUBNET},SecurityGroupIds=${SM_SG} \

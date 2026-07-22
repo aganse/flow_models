@@ -28,7 +28,8 @@
     "tracking_tool": "mlflow",
     "tracking_port": 5000,
     "tracking_expt_name": "flowmodels2",
-    "save_model_weights": false
+    "save_model_weights": false,
+    "checkpoint_every_n_epochs": 5
   },
   "model_arch_params": {
     "image_shape": [128, 128, 3],

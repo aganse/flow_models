@@ -52,6 +52,13 @@ These files use the same three-group structure as the training scripts
 values (`images_path`, MLflow URI) are injected separately via environment
 variables and should not appear in these files.
 
+Key `training_params` entries relevant to cloud runs:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `checkpoint_every_n_epochs` | 5 | Save a checkpoint every N epochs; 0 disables |
+| `save_model_weights` | false | Upload final weights to `WEIGHTS_PATH` after training |
+
 ## Submitting a job
 
 ```bash
@@ -66,6 +73,29 @@ completion. Inside the container `IMAGES_PATH` is set to the FastFile mount
 point `/opt/ml/input/data/training`. If `save_model_weights=True` in
 `training_params`, the weights file is uploaded directly to `WEIGHTS_PATH`
 via boto3.
+
+## Spot instances (optional)
+
+SageMaker managed spot training uses spare EC2 capacity at up to 90% off
+on-demand prices. If the instance is interrupted, SageMaker automatically
+saves `/opt/ml/checkpoints/` to S3 and restores it when a new instance
+becomes available, so training resumes from the last checkpoint rather than
+restarting from epoch 0.
+
+```bash
+make sm-run SCRIPT=2 SPOT=1
+```
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SM_MAX_WAIT` | 90000 s | Total wall-clock deadline including interruption waits (must be ≥ `SM_MAX_RUNTIME`); override with e.g. `make sm-run SPOT=1 SM_MAX_WAIT=36000` |
+
+Checkpoint frequency is set by `checkpoint_every_n_epochs` in the params file
+(default 5). Checkpoints are also written on non-spot runs, providing
+epoch-level recovery from crashes.
+
+> **Note:** AWS Batch spot support is configured at the compute environment
+> level (`make create-compute-env`) and does not use this checkpoint mechanism.
 
 ## Monitoring jobs
 
