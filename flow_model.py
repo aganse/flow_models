@@ -508,7 +508,10 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         tracking_port = training_params.get("tracking_port")
         mlflow_run_started = False
         if tracking_tool == "mlflow":
-            if tracking_port:
+            tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
+            if tracking_uri:
+                mlflow.set_tracking_uri(tracking_uri)
+            elif tracking_port:
                 mlflow.set_tracking_uri(f"http://localhost:{tracking_port}")
             experiment_name = training_params.get(
                 "tracking_expt_name", run_params.get("dataset", "flow_model_training")
@@ -593,6 +596,21 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             weights_path = os.path.join(run_params["model_dir"], "model_weights.weights.h5")
             flow_model.save_weights(weights_path)
             print("Model weights saved to file.\n", flush=True)
+            weights_dest = os.environ.get("WEIGHTS_PATH")
+            if weights_dest:
+                if weights_dest.startswith("s3://"):
+                    import boto3
+                    from urllib.parse import urlparse
+                    parsed = urlparse(weights_dest)
+                    bucket = parsed.netloc
+                    key = parsed.path.lstrip("/") + "/" + os.path.basename(weights_path)
+                    boto3.client("s3").upload_file(weights_path, bucket, key)
+                    print(f"Model weights uploaded to s3://{bucket}/{key}\n", flush=True)
+                else:
+                    import shutil
+                    os.makedirs(weights_dest, exist_ok=True)
+                    shutil.copy2(weights_path, weights_dest)
+                    print(f"Model weights copied to {weights_dest}\n", flush=True)
 
         # save the txt summary description of model arch:
         summary_path = _capture_and_save_summary(

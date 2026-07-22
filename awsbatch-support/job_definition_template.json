@@ -20,6 +20,22 @@
       {
         "name": "AWS_DEFAULT_REGION",
         "value": "${AWS_REGION}"
+      },
+      {
+        "name": "MLFLOW_TRACKING_URI",
+        "value": "${MLFLOW_TRACKING_URI}"
+      },
+      {
+        "name": "IMAGES_PATH",
+        "value": "${IMAGES_PATH}"
+      },
+      {
+        "name": "WEIGHTS_PATH",
+        "value": "${WEIGHTS_PATH}"
+      },
+      {
+        "name": "TRAINING_SCRIPT",
+        "value": "1"
       }
     ],
     "logConfiguration": {
@@ -32,6 +48,6 @@
     },
     "executionRoleArn": "arn:aws:iam::${AWS_ACCT_ID}:role/BatchExecutionRole",
     "image": "${ECR_REPO_URI}:latest",
-    "command": ["python3", "testing.py"]
+    "command": []
   }
 }

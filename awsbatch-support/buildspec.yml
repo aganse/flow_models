@@ -9,7 +9,7 @@ phases:
       - echo "imagestring - ECR_REPO_URI,IMAGE_TAG,DEVICE - ${ECR_REPO_URI},${IMAGE_TAG},${DEVICE}"
       - docker info | head -26
       - docker ps
-      - docker build --build-arg TENSORFLOW_PKG=tensorflow==2.12.0 -t ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} .
+      - docker build -t ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} .
       - docker tag ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} ${ECR_REPO_URI}:latest
   post_build:
     commands:

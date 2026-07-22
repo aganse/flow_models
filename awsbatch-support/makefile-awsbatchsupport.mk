@@ -1,10 +1,10 @@
-# Note: environment variables AWS_ACCT_ID and AWS_REGION are expected to exist
-# in the environment before calling these makefile macros.
+# Note: environment variables AWS_ACCT_ID, AWS_REGION, MLFLOW_TRACKING_URI,
+# and IMAGES_PATH are expected to exist in the environment before calling
+# these makefile macros.
 #
-# Note: two variables are purposely exported to the environment (to be env vars)
-# whereas the rest are just within-makefile-vars, because these two are passed
-# to substitute into a file.  So be careful to not arbitrarily remove the
-# "export" on those two variables below (JOB_DEF_NAME and ECR_REPO_URI).
+# Note: several variables are purposely exported to the environment (to be
+# env vars) because they are passed to envsubst to substitute into a file.
+# So be careful to not arbitrarily remove the "export" on those variables.
 
 
 # You can set these vars to tailor to your naming preferences:
@@ -18,6 +18,10 @@ DEVICE=gpu  # cpu or gpu
 
 # these vars are used in commands in the make macros down below:
 export ECR_REPO_URI=${AWS_ACCT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}
+# Export so envsubst can substitute them into job_definition_template.json:
+export MLFLOW_TRACKING_URI
+export IMAGES_PATH
+export WEIGHTS_PATH
 NETWORKING=subnets=${AWSBATCH_SUBNET},securityGroupIds=${AWSBATCH_SG}
 INSTANCE_ROLE=arn:aws:iam::${AWS_ACCT_ID}:instance-profile/BatchInstanceProfile
 ROLES=instanceRole=${INSTANCE_ROLE}

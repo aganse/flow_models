@@ -1,4 +1,6 @@
+import base64
 from pathlib import Path
+import json
 import numpy as np
 import utils
 import warnings
@@ -8,6 +10,18 @@ from file_utils import get_data_generator, image_files_to_data_generator
 from flow_model import default_training_sequence
 
 warnings.filterwarnings("ignore", category=UserWarning)  # TFP spews a number of these
+
+
+def _load_param_overrides(run_params, training_params, model_arch_params):
+    hp_path = "/opt/ml/input/config/hyperparameters.json"
+    if os.path.exists(hp_path):
+        with open(hp_path) as f:
+            hparams = json.load(f)
+        if "params" in hparams:
+            overrides = json.loads(base64.b64decode(hparams["params"]))
+            run_params.update(overrides.get("run_params", {}))
+            training_params.update(overrides.get("training_params", {}))
+            model_arch_params.update(overrides.get("model_arch_params", {}))
 
 
 def _unwrap_batch(batch):
@@ -21,8 +35,7 @@ run_params = {
     "num_gen_sims": 10,  # number of new simulated images to generate
     "img2lat_chunk_size": 32,  # minibatch size when mapping images -> latents to avoid OOM
     "do_train": True,  # true = training, false = inference w existing model in model_dir
-    "images_path": "/storage/data/afhq",  # local filesys dir containing train/ and val/ subdirs
-    # "images_path": "s3://mybucket",  # this works but is pretty slow, needs some optimizing
+    "images_path": os.environ.get("IMAGES_PATH", "/storage/data/afhq"),
     "do_imgs_and_points": True,  # generate scatterplots, sim images, etc:  not dataset specific
     "do_interp": False,  # interp sim images between some training points:  cat dataset specific
     # Sampling-related knobs:
@@ -68,6 +81,7 @@ model_arch_params = {
     "glow_num_hidden": 256,  # filters in glow coupling CNN (paper uses 400)
     "validate_args": True,
 }
+_load_param_overrides(run_params, training_params, model_arch_params)
 # List the param settings:
 print("")
 utils.print_run_params(**run_params, **training_params, **model_arch_params)
