@@ -1,0 +1,50 @@
+Here’s what each plot is showing and how the legends map to the data:
+
+training_points_latentspace.png
+
+- Overall: Latent-space scatter of the first 1,000 training images, reduced to 2D
+  (PCA). Focus is on characterizing the training distribution and highlighting
+  outliers/inliers.
+- Legend entries:
+    - mapped train pts (blue, semi‑transparent): all mapped training points.
+    - regen images (cyan): the first 5 of those training points, singled out so you can
+      match them to regenerated images later.
+    - top outliers (orange, numbered): the most distant points from the mean in the PCA
+      space.
+    - close to mean (chartreuse, numbered): the points closest to the mean in the PCA
+      space.
+
+compare_points_2d.png
+
+- Overall: Latent-space scatter comparing training points, simulated samples, and
+  “other” (validation) images, again in 2D via PCA. Focus is on how simulations and
+  holdout data align with the training distribution.
+- Legend entries:
+    - train images (blue, semi‑transparent): the mapped training points.
+    - regen images (cyan): the first 5 training points, flagged similarly.
+    - sim images (orange, numbered): latent points used to generate simulated images
+      (numbers correspond to annotated points).
+    - anomaly images (chartreuse, numbered): mapped “other”/validation images.
+
+Key difference: the first plot highlights distribution diagnostics within the training
+set (outliers vs inliers), while the second compares training to simulated and holdout/
+validation points; no outlier/inlier highlight there.
+
+
+How the PNGs line up with the plots:
+
+- outlier_image_*.png: regenerated from the top_outliers latent points. Those points
+  are the orange, numbered “top outliers” in training_points_latentspace.png. Their
+  numbers match the annotations in that plot.
+- inlier_image_*.png: regenerated from closest_to_mean latent points. Those are the
+  chartreuse, numbered “close to mean” points in training_points_latentspace.png, with
+  matching numbers.
+- regen_image_*.png: regenerated from mapped_training_pts[14:]. These aren’t explicitly
+  highlighted in either plot (the “regen images” legend entries in the plots correspond
+  to the first 5 training points, not to these files), so there’s no one-to-one visual
+  match.
+- sim_image_*.png: generated from the sim_pts used in compare_points_2d.png; the
+  orange, numbered “sim images” points there match these files.
+
+There are no saved PNGs for the “anomaly images” (validation/other points); they’re
+only shown as chartreuse points in compare_points_2d.png.

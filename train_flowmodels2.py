@@ -31,22 +31,23 @@ run_params = {
     "pca_n_components": 200,  # legacy=100; None to skip PCA in stats/sampling; higher value uses more PCs
     "pca_solver": "randomized",  # "auto" or "randomized": "randomized" to scale PCA to larger component counts
     "regen_source": "pca_stats",  # "pca_stats", "flow_base", or "train_pts" for sim images
+    "latent_jitter": True,  # when True, add jitter to PCA-sampled latents using residual variance estimate
 }
 training_params = {
     "num_epochs": 50,
-    "batch_size": 128,
+    "batch_size": 64,
     "reg_level": 1e-5,  # regularization level for the L2 reg in realNVP hidden layers
-    "learning_rate": 1e-5,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+    # "learning_rate": 1e-5,  # scaler -> constant learning rate; vector of 3 -> lr schedule
     # "learning_rate": [1e-4, 175, 0.90],  # 1e-6 at 10th epoch  # [initial_rate, decay_steps, decay_rate]
-    # "learning_rate": [1e-4, 750, 0.90],  # 1e-5 at 20th epoch  # [initial_rate, decay_steps, decay_rate]
+    "learning_rate": [1e-5, 750, 0.90],  # 1e-5 at 20th epoch  # [initial_rate, decay_steps, decay_rate]
     # "learning_rate": [1e-4, 350, 0.90],  # 1e-6 at 20th epoch  # [initial_rate, decay_steps, decay_rate]
     # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
     #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
     #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
     "early_stopping_patience": 10,  # value <=0 turns off early_stopping
     # note current model arch has 534,544 params:
-    "num_data_input": 5100,  # num training data pts or images (whether pts or files)
-    "augmentation_factor": 10,  # set >1 to have augmentation turned on
+    "num_data_input": 14600,  # num training data pts or images (whether pts or files)
+    "augmentation_factor": 1,  # set >1 to have augmentation turned on
     "grad_norm_thresh": 20,  # if not None, clip norm of gradients at this thresh
     "log_scale_clip": 4,  # clip log-scale outputs to [-value, value]; <=0 disables
     "jit_compile": True,  # boolean, normally True but sometimes useful in debugging
@@ -58,8 +59,8 @@ training_params = {
 model_arch_params = {
     "image_shape": (128, 128, 3),  # (height, width, channels) of images
     "bijector": "realnvp-based",  # "realnvp-based" or "glow"
-    "flow_steps": 18,  # number of realnvp-based affine coupling layers
-    "hidden_layers": [512, 512, 512],  # nodes/layer in realnvp-based affine coupling layers
+    "flow_steps": 6,  # number of realnvp-based affine coupling layers
+    "hidden_layers": [512, 512],  # nodes/layer in realnvp-based affine coupling layers
     "validate_args": True,
 }
 # List the param settings:
@@ -99,16 +100,25 @@ if run_params["do_imgs_and_points"]:
     # note that training_pts, mean, cov here are all high-dimensional objects.
     # map 1000 pts from train_generator thru flow_model to latent space:
     print("Now calculating Gaussian pts corresponding to first 1000 training images...")
-    mapped_training_pts, mean, reduced_cov, pca, top_outliers, closest_to_mean = (
-        utils.imgs_to_gaussian_pts(
-            flow_model,
-            train_generator,
-            1000,
+mapped_training_pts, mean, reduced_cov, pca, top_outliers, closest_to_mean = (
+    utils.imgs_to_gaussian_pts(
+        flow_model,
+        train_generator,
+        1000,
             chunk_size=run_params["img2lat_chunk_size"],
             neigvals=run_params["pca_n_components"],
             pca_solver=run_params["pca_solver"],
         )
-    )
+)
+latent_jitter_std = None
+if run_params["latent_jitter"]:
+    latent_jitter_std = utils.compute_latent_jitter_std(pca)
+    if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_open"):
+        import mlflow
+        mlflow.log_param("latent_jitter_std", latent_jitter_std)
+elif training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_open"):
+    import mlflow
+    mlflow.log_param("latent_jitter_std", None)
     # Quick latent stats to gauge match to N(0,I)
     latent_mean = np.mean(mapped_training_pts, axis=0)
     latent_std = np.std(mapped_training_pts, axis=0)
@@ -166,6 +176,8 @@ if run_params["do_imgs_and_points"]:
             batch_size=5,
             regen_pts=top_outliers,
             add_plot_num=True,
+            latent_jitter=run_params["latent_jitter"],
+            latent_jitter_std=latent_jitter_std,
         )
         print(f"Now regenerating {run_params['num_gen_sims']} inlier images...")
         inliers_images_path = run_params["output_dir"] + "/inlier_image"
@@ -179,6 +191,8 @@ if run_params["do_imgs_and_points"]:
             batch_size=5,
             regen_pts=closest_to_mean,
             add_plot_num=True,
+            latent_jitter=run_params["latent_jitter"],
+            latent_jitter_std=latent_jitter_std,
         )
     print(f"Now regenerating {run_params['num_gen_sims']} training images...")
     regen_images_path = run_params["output_dir"] + "/regen_image"
@@ -192,6 +206,8 @@ if run_params["do_imgs_and_points"]:
         batch_size=5,
         regen_pts=mapped_training_pts[14:],
         add_plot_num=True,
+        latent_jitter=run_params["latent_jitter"],
+        latent_jitter_std=latent_jitter_std,
     )
     print(f"Now generating {run_params['num_gen_sims']} simulated images...")
     sim_images_path = run_params["output_dir"] + "/sim_image"
@@ -221,6 +237,8 @@ if run_params["do_imgs_and_points"]:
         sampling_mode=sim_sampling_mode,
         cov_scale=run_params["cov_scale"],
         add_plot_num=True,
+        latent_jitter=run_params["latent_jitter"],
+        latent_jitter_std=latent_jitter_std,
     )
     print("Now plotting 2D projection of training+sim+other points.")
     compare_images_path = run_params["output_dir"] + "/compare_points_2d.png"

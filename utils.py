@@ -337,6 +337,37 @@ def generate_multivariate_normal_samples(
     return new_samples_tf
 
 
+def compute_latent_jitter_std(pca):
+    """Estimate a noise stddev to fill truncated PCA dimensions.
+
+    Uses PCA's residual variance when available; otherwise, falls back to the
+    smallest retained variances as a proxy for the discarded tail.
+    """
+    if pca is None:
+        return None
+
+    variances = getattr(pca, "explained_variance_", None)
+    n_components = getattr(pca, "n_components_", None)
+    n_features = getattr(pca, "n_features_", None)
+    if not (
+        variances is not None
+        and n_components is not None
+        and n_features is not None
+        and n_features > n_components
+    ):
+        return None
+
+    tail_var = None
+    if hasattr(pca, "noise_variance_") and pca.noise_variance_ is not None:
+        tail_var = float(pca.noise_variance_)
+    if tail_var is None and len(variances) > 0:
+        # Fallback: use the smallest retained variances as a proxy for the tail.
+        tail_var = float(np.mean(variances[-max(1, len(variances) // 4):]))
+    if tail_var is None or tail_var <= 0:
+        return None
+    return float(np.sqrt(tail_var))
+
+
 def generate_imgs_in_batches(
     model,
     num_gen_images,
@@ -349,6 +380,8 @@ def generate_imgs_in_batches(
     add_plot_num=False,
     sampling_mode="pca",
     cov_scale=1.0,
+    latent_jitter=False,
+    latent_jitter_std=None,
 ):
     """Given latent space distribution params, and/or list of points to use
     (regen_pts), map those through the model into images.
@@ -369,6 +402,10 @@ def generate_imgs_in_batches(
         to match them up to the numbers in the scatterplots.
     sampling_mode: "pca" (legacy PCA-based sampling) or "direct" (flow_model.sample()).
     cov_scale: multiplicative scaling on reduced_cov when sampling via PCA.
+    latent_jitter: when True and sampling via PCA, add small isotropic noise whose
+        std is derived from the residual variance beyond the retained components.
+    latent_jitter_std: optional stddev to use for jitter; if None and latent_jitter
+        is True, a value is derived from the PCA object when available.
     """
 
     num_batches = (num_gen_images + batch_size - 1) // batch_size
@@ -389,6 +426,14 @@ def generate_imgs_in_batches(
                 samples_tf = generate_multivariate_normal_samples(
                     mean, reduced_cov, pca, current_batch_size, cov_scale=cov_scale
                 )
+                if latent_jitter and pca is not None:
+                    jitter_std = latent_jitter_std
+                    if jitter_std is None:
+                        jitter_std = compute_latent_jitter_std(pca)
+                    if jitter_std is not None:
+                        samples_tf = samples_tf + tf.random.normal(
+                            tf.shape(samples_tf), stddev=jitter_std, dtype=tf.float32
+                        )
             else:
                 raise ValueError(f"Unknown sampling_mode '{sampling_mode}'")
         else:
@@ -430,6 +475,8 @@ def generate_sim_pts(
     batch_size=10,
     sampling_mode="pca",
     cov_scale=1.0,
+    latent_jitter=False,
+    latent_jitter_std=None,
 ):
     """Sample latent points and map them back through the model.
 
@@ -456,6 +503,14 @@ def generate_sim_pts(
                 samples_tf = generate_multivariate_normal_samples(
                     mean, reduced_cov, pca, current_batch_size, cov_scale=cov_scale
                 )
+                if latent_jitter and pca is not None:
+                    jitter_std = latent_jitter_std
+                    if jitter_std is None:
+                        jitter_std = compute_latent_jitter_std(pca)
+                    if jitter_std is not None:
+                        samples_tf = samples_tf + tf.random.normal(
+                            tf.shape(samples_tf), stddev=jitter_std, dtype=tf.float32
+                        )
             else:
                 raise ValueError(f"Unknown sampling_mode '{sampling_mode}'")
         else:
