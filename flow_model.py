@@ -421,9 +421,17 @@ class FlowModel(tf.keras.Model):
         """Images to Gaussian latent points."""
         if self.bijector_type == "glow":
             inputs = tf.reshape(inputs, (-1, *self.image_shape))
+            result = self.flow.bijector.inverse(inputs)
+            # Glow's multi-scale exits produce a dict of per-scale latents;
+            # flatten and concat into a single vector matching the base distribution.
+            batch_size = tf.shape(inputs)[0]
+            return tf.concat(
+                [tf.reshape(t, (batch_size, -1)) for t in tf.nest.flatten(result)],
+                axis=-1,
+            )
         else:
             inputs = tf.reshape(inputs, (-1, np.prod(inputs.shape[1:])))
-        return self.flow.bijector.inverse(inputs)
+            return self.flow.bijector.inverse(inputs)
 
     @tf.function
     def inverse(self, outputs):
