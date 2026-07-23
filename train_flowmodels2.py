@@ -33,21 +33,17 @@ run_params = {
     "regen_source": "pca_stats",  # "pca_stats", "flow_base", or "train_pts" for sim images
 }
 training_params = {
-    "num_epochs": 150,
+    "num_epochs": 75,
     "batch_size": 64,
     "reg_level": 1e-5,  # regularization level for the L2 reg in realNVP hidden layers
-    "learning_rate": 1e-4,  # scaler -> constant learning rate; vector of 3 -> lr schedule
-    # "learning_rate": [1e-5, 750, 0.90],  # 1e-5 at 20th epoch  # [initial_rate, decay_steps, decay_rate]
-    # "learning_rate": [1e-4, 175, 0.90],  # 1e-6 at 10th epoch  # [initial_rate, decay_steps, decay_rate]
-    # "learning_rate": [1e-4, 750, 0.90],  # 1e-5 at 20th epoch  # [initial_rate, decay_steps, decay_rate]
-    # "learning_rate": [1e-4, 350, 0.90],  # 1e-6 at 20th epoch  # [initial_rate, decay_steps, decay_rate]
-    # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
+    # "learning_rate": 1e-4,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+    "learning_rate": [1e-4, 10, 0.50],  # 5e-5 at 10th epoch  # [initial_rate, decay_steps, decay_rate]
     #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
     #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
     "early_stopping_patience": 30,  # value <=0 turns off early_stopping
     # note current model arch has 534,544 params:
-    "num_data_input": 14600,  # num training data pts or images (whether pts or files)
-    "augmentation_factor": 5,  # set >1 to have augmentation turned on
+    "num_data_input": 5100,  # num training data pts or images (whether pts or files)
+    "augmentation_factor": 3,  # set >1 to have augmentation turned on
     "grad_norm_thresh": 50,  # if not None, clip norm of gradients at this thresh
     "log_scale_clip": 4,  # clip log-scale outputs to [-value, value]; <=0 disables
     "jit_compile": True,  # boolean, normally True but sometimes useful in debugging
@@ -60,13 +56,13 @@ model_arch_params = {
     "image_shape": (128, 128, 3),  # (height, width, channels) of images
     "bijector": "glow",  # "realnvp-based" or "glow"
     # realnvp-based params:
-    "realnvp_flow_steps": 18,  # number of realnvp-based affine coupling layers
-    "realnvp_hidden_layers": [512, 512, 512],  # nodes/layer in realnvp-based affine coupling layers
+    "realnvp_flow_steps": 6,  # number of realnvp-based affine coupling layers
+    "realnvp_hidden_layers": [512, 512],  # nodes/layer in realnvp-based affine coupling layers
     "realnvp_permutation": "alternating",  # "alternating" or "random" permutation between coupling layers
     # glow params:
     "glow_num_blocks": 3,  # number of multi-scale levels (need >=3 for 128x128)
-    "glow_steps_per_block": 8,  # flow steps per level (paper uses 32; 8 is a lighter start)
-    "glow_num_hidden": 256,  # filters in glow coupling CNN (paper uses 400)
+    "glow_steps_per_block": 6,  # flow steps per level (paper uses 32; 8 is a lighter start)
+    "glow_num_hidden": 128,  # filters in glow coupling CNN (paper uses 400; could use 256 here)
     "validate_args": True,
 }
 # List the param settings:

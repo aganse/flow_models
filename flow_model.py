@@ -377,6 +377,18 @@ class FlowModel(tf.keras.Model):
         config.pop("dtype", None)
         return cls(**config)
 
+    @property
+    def trainable_variables(self):
+        # tf.keras.Model.trainable_variables only recurses into Keras-tracked
+        # sub-objects (Layers/Models). tfb.Glow is a tf.Module but not a Keras
+        # Layer, so its variables are missed. Collect from both sources.
+        seen = {}
+        for v in super().trainable_variables:
+            seen[v.ref()] = v
+        for v in self.flow_bijector.trainable_variables:
+            seen.setdefault(v.ref(), v)
+        return list(seen.values())
+
     def print_vars(self):
         """More detailed output per model layers, mainly for debugging purposes.
         """
@@ -402,22 +414,7 @@ class FlowModel(tf.keras.Model):
 
     @tf.function
     def log_prob(self, x):
-        if self.bijector_type == "glow":
-            return self._glow_log_prob(x)
-        else:
-            return self.flow.log_prob(x)
-
-    def _glow_log_prob(self, x):
-        # TransformedDistribution.log_prob infers event_ndims via bijector shape
-        # methods that mix int32 (tf.shape) and int64 constants in TFP 0.25,
-        # causing ConcatV2 type errors in graph mode. Bypassing it with explicit
-        # event_ndims avoids the shape inference entirely.
-        z = self.flow.bijector.inverse(x)
-        log_det_jac = self.flow.bijector.inverse_log_det_jacobian(
-            x, event_ndims=len(self.image_shape)
-        )
-        flat_z = tf.reshape(z, (-1, np.prod(self.image_shape)))
-        return self.flow.distribution.log_prob(flat_z) + log_det_jac
+        return self.flow.log_prob(x)
 
     @tf.function
     def call(self, inputs):
@@ -448,11 +445,7 @@ class FlowModel(tf.keras.Model):
             images = tf.reshape(images, (-1, np.prod(self.image_shape)))
         with tf.GradientTape() as tape:
 
-            log_prob = (
-                self._glow_log_prob(images)
-                if self.bijector_type == "glow"
-                else self.flow.log_prob(images)
-            )
+            log_prob = self.flow.log_prob(images)
 
             tf.debugging.assert_all_finite(
                 log_prob, "NaN or Inf detected in log_prob"
