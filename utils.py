@@ -418,7 +418,7 @@ def generate_imgs_in_batches(
             f"Generated and saved {batch_idx * batch_size + current_batch_size} images out of {num_gen_images}"
         )
 
-    return samples_tf
+    return tf.reshape(samples_tf, (tf.shape(samples_tf)[0], -1))
 
 
 def generate_sim_pts(
