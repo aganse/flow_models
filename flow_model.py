@@ -18,6 +18,37 @@ from datetime import datetime
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
+
+def _patch_tfp_prefer_static_concat():
+    # TFP 0.25's Reshape bijector (used internally by Glow) calls
+    # prefer_static.concat([int32_tensor, int64_tensor]) in graph mode.
+    # tf.concat requires uniform dtypes; this casts int64 to int32 when the
+    # list contains a mix. Safe here since all values are shape tensors.
+    try:
+        from tensorflow_probability.python.internal import prefer_static as ps
+        if getattr(ps, "_glow_dtype_patch_applied", False):
+            return
+        _orig = ps.concat
+
+        def _concat(values, axis, name="concat"):
+            if isinstance(values, (list, tuple)):
+                dtypes = {v.dtype for v in values if isinstance(v, tf.Tensor)}
+                if tf.int32 in dtypes and tf.int64 in dtypes:
+                    values = [
+                        tf.cast(v, tf.int32)
+                        if isinstance(v, tf.Tensor) and v.dtype == tf.int64
+                        else v
+                        for v in values
+                    ]
+            return _orig(values, axis, name=name)
+
+        ps.concat = _concat
+        ps._glow_dtype_patch_applied = True
+    except Exception:
+        pass
+
+
+_patch_tfp_prefer_static_concat()
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.optimizers.schedules import ExponentialDecay
@@ -222,7 +253,7 @@ class FlowModel(tf.keras.Model):
         if bijector == "glow":
 
             self.flow_bijector = tfb.Glow(
-                output_shape=self.image_shape,
+                output_shape=tuple(int(x) for x in self.image_shape),
                 num_glow_blocks=glow_num_blocks,
                 num_steps_per_block=glow_steps_per_block,
                 coupling_bijector_fn=functools.partial(
@@ -371,7 +402,22 @@ class FlowModel(tf.keras.Model):
 
     @tf.function
     def log_prob(self, x):
-        return self.flow.log_prob(x)
+        if self.bijector_type == "glow":
+            return self._glow_log_prob(x)
+        else:
+            return self.flow.log_prob(x)
+
+    def _glow_log_prob(self, x):
+        # TransformedDistribution.log_prob infers event_ndims via bijector shape
+        # methods that mix int32 (tf.shape) and int64 constants in TFP 0.25,
+        # causing ConcatV2 type errors in graph mode. Bypassing it with explicit
+        # event_ndims avoids the shape inference entirely.
+        z = self.flow.bijector.inverse(x)
+        log_det_jac = self.flow.bijector.inverse_log_det_jacobian(
+            x, event_ndims=len(self.image_shape)
+        )
+        flat_z = tf.reshape(z, (-1, np.prod(self.image_shape)))
+        return self.flow.distribution.log_prob(flat_z) + log_det_jac
 
     @tf.function
     def call(self, inputs):
@@ -402,7 +448,12 @@ class FlowModel(tf.keras.Model):
             images = tf.reshape(images, (-1, np.prod(self.image_shape)))
         with tf.GradientTape() as tape:
 
-            log_prob = self.flow.log_prob(images)
+            log_prob = (
+                self._glow_log_prob(images)
+                if self.bijector_type == "glow"
+                else self.flow.log_prob(images)
+            )
+
             tf.debugging.assert_all_finite(
                 log_prob, "NaN or Inf detected in log_prob"
             )
@@ -494,9 +545,18 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             print("train.py: error: learning_rate not scalar or list of length 3.")
             quit()
 
+        jit_compile = training_params["jit_compile"]
+        if model_arch_params.get("bijector") == "glow" and jit_compile:
+            # Glow's trainable 1x1 conv creates permutation variables on CPU;
+            # XLA cannot access CPU variables from GPU kernels. Also, TFP 0.25
+            # Glow has int32/int64 shape issues that only fully surface under XLA.
+            print("Note: jit_compile disabled for Glow bijector (XLA/TFP incompatibility).\n",
+                  flush=True)
+            jit_compile = False
         flow_model.compile(
             optimizer=Adam(learning_rate=lrate),
-            jit_compile=training_params["jit_compile"],
+            # jit_compile=training_params["jit_compile"],
+            jit_compile=jit_compile,
         )
 
         tracking_tool = training_params.get("tracking_tool")

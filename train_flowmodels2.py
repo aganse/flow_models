@@ -33,21 +33,22 @@ run_params = {
     "regen_source": "pca_stats",  # "pca_stats", "flow_base", or "train_pts" for sim images
 }
 training_params = {
-    "num_epochs": 50,
-    "batch_size": 128,
+    "num_epochs": 150,
+    "batch_size": 64,
     "reg_level": 1e-5,  # regularization level for the L2 reg in realNVP hidden layers
-    "learning_rate": 1e-5,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+    "learning_rate": 1e-4,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+    # "learning_rate": [1e-5, 750, 0.90],  # 1e-5 at 20th epoch  # [initial_rate, decay_steps, decay_rate]
     # "learning_rate": [1e-4, 175, 0.90],  # 1e-6 at 10th epoch  # [initial_rate, decay_steps, decay_rate]
     # "learning_rate": [1e-4, 750, 0.90],  # 1e-5 at 20th epoch  # [initial_rate, decay_steps, decay_rate]
     # "learning_rate": [1e-4, 350, 0.90],  # 1e-6 at 20th epoch  # [initial_rate, decay_steps, decay_rate]
     # "learning_rate": [0.001, 300, 0.90],  # [initial_rate, decay_steps, decay_rate]
     #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
     #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
-    "early_stopping_patience": 10,  # value <=0 turns off early_stopping
+    "early_stopping_patience": 30,  # value <=0 turns off early_stopping
     # note current model arch has 534,544 params:
-    "num_data_input": 5100,  # num training data pts or images (whether pts or files)
-    "augmentation_factor": 10,  # set >1 to have augmentation turned on
-    "grad_norm_thresh": 20,  # if not None, clip norm of gradients at this thresh
+    "num_data_input": 14600,  # num training data pts or images (whether pts or files)
+    "augmentation_factor": 5,  # set >1 to have augmentation turned on
+    "grad_norm_thresh": 50,  # if not None, clip norm of gradients at this thresh
     "log_scale_clip": 4,  # clip log-scale outputs to [-value, value]; <=0 disables
     "jit_compile": True,  # boolean, normally True but sometimes useful in debugging
     "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"
@@ -57,7 +58,7 @@ training_params = {
 }
 model_arch_params = {
     "image_shape": (128, 128, 3),  # (height, width, channels) of images
-    "bijector": "realnvp-based",  # "realnvp-based" or "glow"
+    "bijector": "glow",  # "realnvp-based" or "glow"
     # realnvp-based params:
     "realnvp_flow_steps": 18,  # number of realnvp-based affine coupling layers
     "realnvp_hidden_layers": [512, 512, 512],  # nodes/layer in realnvp-based affine coupling layers
