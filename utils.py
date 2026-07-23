@@ -379,12 +379,10 @@ def generate_imgs_in_batches(
 
         if regen_pts is None:
             if sampling_mode == "direct":
-                latent_dim = np.prod(model.image_shape)
-                samples_tf = tf.random.normal(
-                    shape=(current_batch_size, latent_dim), dtype=tf.float32
-                )
-                if cov_scale != 1.0:
-                    samples_tf = samples_tf * cov_scale
+                # Use the model's native sampler so structured latent spaces
+                # (e.g. Glow's multi-scale exits) are handled correctly by TFP
+                # rather than passing a flat random vector to model.inverse().
+                samples_tf = model.sample(current_batch_size)
             elif sampling_mode == "pca":
                 samples_tf = generate_multivariate_normal_samples(
                     mean, reduced_cov, pca, current_batch_size, cov_scale=cov_scale
@@ -399,9 +397,12 @@ def generate_imgs_in_batches(
             ]
 
         for i in range(current_batch_size):
-            # Map back through the invertible network
-            generated_image = model.inverse(samples_tf[i : i + 1])
-            generated_image = tf.reshape(generated_image, model.image_shape)
+            if sampling_mode == "direct" and regen_pts is None:
+                # model.sample() returns images directly; no inverse pass needed.
+                generated_image = tf.reshape(samples_tf[i], model.image_shape)
+            else:
+                generated_image = model.inverse(samples_tf[i : i + 1])
+                generated_image = tf.reshape(generated_image, model.image_shape)
 
             # Save the generated image
             img = generated_image.numpy()
