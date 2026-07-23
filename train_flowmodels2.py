@@ -122,6 +122,17 @@ if run_params["do_imgs_and_points"]:
         f"mean std={latent_std.mean():.4f}, "
         f"min/median/max std=({latent_std.min():.4f}, {np.median(latent_std):.4f}, {latent_std.max():.4f})"
     )
+    if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_open"):
+        import mlflow
+        mlflow.log_metrics({
+            "latent_mean_of_means": float(latent_mean.mean()),
+            "latent_median_mean":   float(np.median(latent_mean)),
+            "latent_max_abs_mean":  float(np.abs(latent_mean).max()),
+            "latent_mean_std":      float(latent_std.mean()),
+            "latent_median_std":    float(np.median(latent_std)),
+            "latent_min_std":       float(latent_std.min()),
+            "latent_max_std":       float(latent_std.max()),
+        })
     print("Now calculating Gaussian pts corresponding to first 9 'other' images...")
     other_pts, _, _, _, _, _ = utils.imgs_to_gaussian_pts(
         flow_model,

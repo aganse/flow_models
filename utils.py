@@ -406,7 +406,8 @@ def generate_imgs_in_batches(
 
             # Save the generated image
             img = generated_image.numpy()
-            img = (img * 255).astype(np.uint8)  # Convert back to uint8 format
+            img = np.clip(img, 0.0, 1.0)
+            img = (img * 255).astype(np.uint8)
             img_idx = batch_idx * batch_size + i + 1
             if add_plot_num:
                 img = add_text_to_image(
