@@ -367,11 +367,13 @@ def generate_imgs_in_batches(
            Technically doesn't have to be training_pts, could be any array of pts.
     add_plot_num: boolean: add little orange id # at top left of output images
         to match them up to the numbers in the scatterplots.
-    sampling_mode: "pca" (legacy PCA-based sampling) or "direct" (flow_model.sample()).
+    sampling_mode: "pca" (PCA-based sampling) or "direct" (N(0,I) latent sampling).
     cov_scale: multiplicative scaling on reduced_cov when sampling via PCA.
     """
 
     num_batches = (num_gen_images + batch_size - 1) // batch_size
+    flat_dim = int(np.prod(model.image_shape))
+    all_latent_samples = []
 
     for batch_idx in range(num_batches):
         # Determine the number of images to generate in this batch
@@ -379,10 +381,12 @@ def generate_imgs_in_batches(
 
         if regen_pts is None:
             if sampling_mode == "direct":
-                # Use the model's native sampler so structured latent spaces
-                # (e.g. Glow's multi-scale exits) are handled correctly by TFP
-                # rather than passing a flat random vector to model.inverse().
-                samples_tf = model.sample(current_batch_size)
+                # Sample from N(0,I) in latent space; decode via model.inverse().
+                # Keeping latent samples explicit (not via TransformedDistribution.sample)
+                # ensures the returned points are true latent coordinates for scatter plots.
+                samples_tf = tf.random.normal(
+                    shape=(current_batch_size, flat_dim), dtype=tf.float32
+                )
             elif sampling_mode == "pca":
                 samples_tf = generate_multivariate_normal_samples(
                     mean, reduced_cov, pca, current_batch_size, cov_scale=cov_scale
@@ -396,13 +400,11 @@ def generate_imgs_in_batches(
                 (batch_idx * batch_size) : (batch_idx * batch_size + current_batch_size)
             ]
 
+        all_latent_samples.append(np.reshape(np.array(samples_tf), (current_batch_size, -1)))
+
         for i in range(current_batch_size):
-            if sampling_mode == "direct" and regen_pts is None:
-                # model.sample() returns images directly; no inverse pass needed.
-                generated_image = tf.reshape(samples_tf[i], model.image_shape)
-            else:
-                generated_image = model.inverse(samples_tf[i : i + 1])
-                generated_image = tf.reshape(generated_image, model.image_shape)
+            generated_image = model.inverse(samples_tf[i : i + 1])
+            generated_image = tf.reshape(generated_image, model.image_shape)
 
             # Save the generated image
             img = generated_image.numpy()
@@ -419,7 +421,7 @@ def generate_imgs_in_batches(
             f"Generated and saved {batch_idx * batch_size + current_batch_size} images out of {num_gen_images}"
         )
 
-    return tf.reshape(samples_tf, (tf.shape(samples_tf)[0], -1))
+    return np.concatenate(all_latent_samples, axis=0)
 
 
 def generate_sim_pts(
