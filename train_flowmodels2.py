@@ -236,6 +236,16 @@ if run_params["do_imgs_and_points"]:
         cov_scale=run_params["cov_scale"],
         add_plot_num=True,
     )
+    # Quick latent stats to gauge match to N(0,I)
+    sim_latent_mean = np.mean(sim_pts, axis=0)
+    sim_latent_std = np.std(sim_pts, axis=0)
+    print(
+        "Latent stats on simulated pts: "
+        f"mean of means={sim_latent_mean.mean():.4f}, "
+        f"min/median/max mean=({sim_latent_mean.min():.4f}, {np.median(sim_latent_mean):.4f}, {sim_latent_mean.max():.4f}); "
+        f"mean std={sim_latent_std.mean():.4f}, "
+        f"min/median/max std=({sim_latent_std.min():.4f}, {np.median(sim_latent_std):.4f}, {sim_latent_std.max():.4f})"
+    )
     print("Now plotting 2D projection of training+sim+other points.")
     compare_images_path = run_params["output_dir"] + "/compare_points_2d.png"
     utils.plot_pts_2d(
