@@ -529,6 +529,43 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
 
     history = None
 
+    tracking_tool = training_params.get("tracking_tool")
+    valid_tools = {None, "tensorboard", "mlflow"}
+    if tracking_tool not in valid_tools:
+        raise ValueError(
+            f"Unsupported tracking_tool '{tracking_tool}'. Expected one of {valid_tools - {None}} or None."
+        )
+    tracking_port = training_params.get("tracking_port")
+    mlflow_run_started = False
+    if tracking_tool == "mlflow":
+        tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
+        if tracking_uri:
+            mlflow.set_tracking_uri(tracking_uri)
+        elif tracking_port:
+            mlflow.set_tracking_uri(f"http://localhost:{tracking_port}")
+        experiment_name = training_params.get(
+            "tracking_expt_name", run_params.get("dataset", "flow_model_training")
+        )
+        mlflow.set_experiment(experiment_name)
+        dataset = run_params.get("dataset", "flow_model_run")
+        num_gen = run_params.get("num_gen_sims", "NA")
+        run_name = f"{dataset}_{num_gen}"
+        if mlflow.active_run():
+            mlflow.end_run()
+        mlflow.start_run(run_name=run_name)
+        params_for_logging = {
+            **run_params,
+            **training_params,
+            **model_arch_params,
+            "tracking_tool": tracking_tool,
+        }
+        params_for_logging.pop("output_dir", None)
+        mlflow.log_params(_flatten_params(params_for_logging))
+        active_run = mlflow.active_run()
+        if active_run:
+            run_params["mlflow_run_id"] = active_run.info.run_id
+        mlflow_run_started = True
+
     if run_params["do_train"]:
         print("Training model:", flush=True)
 
@@ -561,45 +598,6 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             # jit_compile=training_params["jit_compile"],
             jit_compile=jit_compile,
         )
-
-        tracking_tool = training_params.get("tracking_tool")
-        valid_tools = {None, "tensorboard", "mlflow"}
-        if tracking_tool not in valid_tools:
-            raise ValueError(
-                f"Unsupported tracking_tool '{tracking_tool}'. Expected one of {valid_tools - {None}} or None."
-            )
-        tracking_port = training_params.get("tracking_port")
-        mlflow_run_started = False
-        if tracking_tool == "mlflow":
-            if tracking_port:
-                mlflow.set_tracking_uri(f"http://localhost:{tracking_port}")
-            experiment_name = training_params.get(
-                "tracking_expt_name", run_params.get("dataset", "flow_model_training")
-            )
-            mlflow.set_experiment(experiment_name)
-            dataset = run_params.get("dataset", "flow_model_run")
-            num_gen = run_params.get("num_gen_sims", "NA")
-            run_name = f"{dataset}_{num_gen}"
-            if mlflow.active_run():
-                mlflow.end_run()
-            mlflow.start_run(run_name=run_name)
-            params_for_logging = {
-                **run_params,
-                **training_params,
-                **model_arch_params,
-                "tracking_tool": tracking_tool,
-            }
-            # Avoid logging artifacts-related flags that aren't parameters.
-            params_for_logging.pop("output_dir", None)
-            mlflow.log_params(
-                _flatten_params(
-                    params_for_logging
-                )
-            )
-            active_run = mlflow.active_run()
-            if active_run:
-                run_params["mlflow_run_id"] = active_run.info.run_id
-            mlflow_run_started = True
 
         callbacks = []
         if training_params["early_stopping_patience"] > 0:
@@ -687,5 +685,7 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             run_params["output_dir"],
             log_to_mlflow=False,
         )
+        if mlflow_run_started:
+            run_params["mlflow_run_open"] = True
 
     return flow_model, history
