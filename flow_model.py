@@ -527,6 +527,8 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
     flow_model.build(input_shape=(None, *model_arch_params["image_shape"]))
     print("")
 
+    history = None
+
     if run_params["do_train"]:
         print("Training model:", flush=True)
 
@@ -675,6 +677,9 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             f"Loading model weights from file in {run_params['model_dir']}.\n", flush=True
         )
         weights_path = os.path.join(run_params["model_dir"], "model_weights.weights.h5")
+        # Glow creates variables lazily on the first forward pass; they must
+        # exist before load_weights can populate them:
+        _ = flow_model(tf.random.normal([1, *model_arch_params["image_shape"]]))
         flow_model.load_weights(weights_path)
         _capture_and_save_summary(
             flow_model,

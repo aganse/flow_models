@@ -30,10 +30,10 @@ run_params = {
     "cov_scale": 0.25,  # multiplier on reduced_cov when sampling via PCA (legacy was 0.25)
     "pca_n_components": 200,  # legacy=100; None to skip PCA in stats/sampling; higher value uses more PCs
     "pca_solver": "randomized",  # "auto" or "randomized": "randomized" to scale PCA to larger component counts
-    "regen_source": "pca_stats",  # "pca_stats", "flow_base", or "train_pts" for sim images
+    "regen_source": "flow_base",  # "pca_stats", "flow_base", or "train_pts" for sim images
 }
 training_params = {
-    "num_epochs": 150,
+    "num_epochs": 50,
     "batch_size": 64,  # max on g4dn.xlarge with current image size (fills memory)
     "reg_level": 1e-5,  # regularization level for the L2 reg in realNVP hidden layers
     # "learning_rate": 1e-4,  # scaler -> constant learning rate; vector of 3 -> lr schedule
