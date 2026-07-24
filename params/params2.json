@@ -1,0 +1,45 @@
+{
+  "run_params": {
+    "output_dir": "output",
+    "model_dir": "model/flowmodels2/cats_128x128",
+    "dataset": "cats",
+    "num_gen_sims": 10,
+    "img2lat_chunk_size": 32,
+    "do_train": true,
+    "do_imgs_and_points": true,
+    "do_interp": false,
+    "sampling_mode": "pca",
+    "cov_scale": 0.25,
+    "pca_n_components": 200,
+    "pca_solver": "randomized",
+    "regen_source": "pca_stats"
+  },
+  "training_params": {
+    "num_epochs": 50,
+    "batch_size": 128,
+    "reg_level": 1e-5,
+    "learning_rate": 1e-5,
+    "early_stopping_patience": 10,
+    "num_data_input": 5100,
+    "augmentation_factor": 10,
+    "grad_norm_thresh": 20,
+    "log_scale_clip": 4,
+    "jit_compile": true,
+    "tracking_tool": "mlflow",
+    "tracking_port": 5000,
+    "tracking_expt_name": "flowmodels2",
+    "save_model_weights": false,
+    "checkpoint_every_n_epochs": 5
+  },
+  "model_arch_params": {
+    "image_shape": [128, 128, 3],
+    "bijector": "realnvp-based",
+    "realnvp_flow_steps": 18,
+    "realnvp_hidden_layers": [512, 512, 512],
+    "realnvp_permutation": "alternating",
+    "glow_num_blocks": 3,
+    "glow_steps_per_block": 8,
+    "glow_num_hidden": 256,
+    "validate_args": true
+  }
+}

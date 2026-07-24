@@ -12,8 +12,10 @@ flow_model.fit(train_data_generator, epochs=num_epochs, steps_per_epoch=steps_pe
 """
 
 import functools
+import glob
 import io
 import os
+import re
 from datetime import datetime
 import numpy as np
 import tensorflow as tf
@@ -599,6 +601,67 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             jit_compile=jit_compile,
         )
 
+        tracking_tool = training_params.get("tracking_tool")
+        valid_tools = {None, "tensorboard", "mlflow"}
+        if tracking_tool not in valid_tools:
+            raise ValueError(
+                f"Unsupported tracking_tool '{tracking_tool}'. Expected one of {valid_tools - {None}} or None."
+            )
+        tracking_port = training_params.get("tracking_port")
+        mlflow_run_started = False
+        if tracking_tool == "mlflow":
+            tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
+            if tracking_uri:
+                mlflow.set_tracking_uri(tracking_uri)
+            elif tracking_port:
+                mlflow.set_tracking_uri(f"http://localhost:{tracking_port}")
+            experiment_name = training_params.get(
+                "tracking_expt_name", run_params.get("dataset", "flow_model_training")
+            )
+            mlflow.set_experiment(experiment_name)
+            dataset = run_params.get("dataset", "flow_model_run")
+            num_gen = run_params.get("num_gen_sims", "NA")
+            run_name = f"{dataset}_{num_gen}"
+            if mlflow.active_run():
+                mlflow.end_run()
+            mlflow.start_run(run_name=run_name)
+            params_for_logging = {
+                **run_params,
+                **training_params,
+                **model_arch_params,
+                "tracking_tool": tracking_tool,
+            }
+            # Avoid logging artifacts-related flags that aren't parameters.
+            params_for_logging.pop("output_dir", None)
+            mlflow.log_params(
+                _flatten_params(
+                    params_for_logging
+                )
+            )
+            active_run = mlflow.active_run()
+            if active_run:
+                run_params["mlflow_run_id"] = active_run.info.run_id
+            mlflow_run_started = True
+
+        initial_epoch = 0
+        if training_params.get("checkpoint_every_n_epochs", 0) > 0:
+            _ckpt_dir = (
+                "/opt/ml/checkpoints"
+                if os.path.exists("/opt/ml")
+                else os.path.join(run_params["model_dir"], "checkpoints")
+            )
+            ckpt_files = sorted(
+                glob.glob(os.path.join(_ckpt_dir, "ckpt-*.weights.h5"))
+            )
+            if ckpt_files:
+                latest = ckpt_files[-1]
+                initial_epoch = int(re.search(r"ckpt-(\d+)", latest).group(1))
+                flow_model.load_weights(latest)
+                print(
+                    f"Resuming from checkpoint epoch {initial_epoch}: {latest}\n",
+                    flush=True,
+                )
+
         callbacks = []
         if training_params["early_stopping_patience"] > 0:
             callbacks.append(
@@ -623,6 +686,22 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             callbacks.append(
                 MLflowLoggingCallback()
             )
+        if training_params.get("checkpoint_every_n_epochs", 0) > 0:
+            _ckpt_dir = (
+                "/opt/ml/checkpoints"
+                if os.path.exists("/opt/ml")
+                else os.path.join(run_params["model_dir"], "checkpoints")
+            )
+            os.makedirs(_ckpt_dir, exist_ok=True)
+            callbacks.append(
+                tf.keras.callbacks.ModelCheckpoint(
+                    filepath=os.path.join(_ckpt_dir, "ckpt-{epoch:04d}.weights.h5"),
+                    save_weights_only=True,
+                    save_freq="epoch",
+                    period=training_params["checkpoint_every_n_epochs"],
+                    verbose=1,
+                )
+            )
 
         def _train_data_gen():
             for batch in infinite_generator(train_gen):
@@ -645,6 +724,7 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             // training_params["batch_size"]
             * training_params["augmentation_factor"],
             callbacks=callbacks,
+            initial_epoch=initial_epoch,
         )
         print("Done training model.", flush=True)
         os.makedirs(run_params["model_dir"], exist_ok=True)
@@ -654,6 +734,21 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             weights_path = os.path.join(run_params["model_dir"], "model_weights.weights.h5")
             flow_model.save_weights(weights_path)
             print("Model weights saved to file.\n", flush=True)
+            weights_dest = os.environ.get("WEIGHTS_PATH")
+            if weights_dest:
+                if weights_dest.startswith("s3://"):
+                    import boto3
+                    from urllib.parse import urlparse
+                    parsed = urlparse(weights_dest)
+                    bucket = parsed.netloc
+                    key = parsed.path.lstrip("/") + "/" + os.path.basename(weights_path)
+                    boto3.client("s3").upload_file(weights_path, bucket, key)
+                    print(f"Model weights uploaded to s3://{bucket}/{key}\n", flush=True)
+                else:
+                    import shutil
+                    os.makedirs(weights_dest, exist_ok=True)
+                    shutil.copy2(weights_path, weights_dest)
+                    print(f"Model weights copied to {weights_dest}\n", flush=True)
 
         # save the txt summary description of model arch:
         summary_path = _capture_and_save_summary(

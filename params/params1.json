@@ -1,0 +1,34 @@
+{
+  "run_params": {
+    "output_dir": "output",
+    "model_dir": "model/flowmodels1",
+    "dataset": "gmm",
+    "num_gen_sims": 1000,
+    "do_train": true,
+    "num_outliers_to_highlight": 10
+  },
+  "training_params": {
+    "num_epochs": 50,
+    "batch_size": 128,
+    "reg_level": 1e-5,
+    "learning_rate": [1e-4, 750, 0.90],
+    "early_stopping_patience": 10,
+    "num_data_input": 100000,
+    "augmentation_factor": 1,
+    "grad_norm_thresh": 25,
+    "log_scale_clip": 5,
+    "jit_compile": true,
+    "tracking_tool": "mlflow",
+    "tracking_port": 5000,
+    "tracking_expt_name": "flowmodels1",
+    "save_model_weights": false,
+    "checkpoint_every_n_epochs": 5
+  },
+  "model_arch_params": {
+    "image_shape": [2],
+    "bijector": "realnvp-based",
+    "realnvp_flow_steps": 12,
+    "realnvp_hidden_layers": [512, 512],
+    "validate_args": true
+  }
+}

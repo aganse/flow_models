@@ -8,6 +8,9 @@ export PYTHON_BIN=python3.12
 # This line allows the AWS Batch make commands to be run from repo root dir
 include awsbatch-support/makefile-awsbatchsupport.mk
 
+# This line allows the SageMaker Training Jobs commands to be run from repo root dir
+include sagemaker-support/makefile-sagemakersupport.mk
+
 
 # These are system commands used in macros below.
 # (verify in a python environment to gate installation of packages)
@@ -41,17 +44,33 @@ lint:
 	flake8 .
 
 build-cpu:
-	# Building with CPU package of TF for dev/testing on a light-compute instance.
-	docker build --build-arg TENSORFLOW_PKG=tensorflow-cpu==2.12.0 -t $(ECR_REPO):$(version)-cpu .
+	# Build CPU image for local dev/testing.
+	docker build -t $(ECR_REPO):$(version)-cpu .
 
 build-gpu:
-	# Building with GPU package of TF - requires heavier-compute instance to build.
-	# For example building on the same g4dn.xlarge gpu instance it gets run on.
-	docker build --build-arg TENSORFLOW_PKG=tensorflow==2.12.0 -t ${ECR_REPO}:$(version)-gpu .
+	# Build GPU image for cloud training (best done via make run-build on AWS CodeBuild).
+	docker build -t ${ECR_REPO}:$(version)-gpu .
 
 run-local:
-	# Run/test the batch job on local instance
-	docker run --rm -it flow_models:$(version)-${DEVICE}
+	# Run a training script locally in Docker.
+	# Usage: make run-local SCRIPT=1  (or SCRIPT=2, etc.)
+ifndef SCRIPT
+	@echo "Usage: make run-local SCRIPT=1  (or SCRIPT=2, etc.)"
+	@exit 1
+endif
+	$(eval DATA_MOUNT := $(shell \
+	  if echo "$(IMAGES_PATH)" | grep -q "^s3://"; \
+	  then echo ""; \
+	  else echo "-v $(IMAGES_PATH):$(IMAGES_PATH)"; \
+	  fi))
+	docker run --rm -it \
+	  -e TRAINING_SCRIPT=$(SCRIPT) \
+	  -e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
+	  -e IMAGES_PATH=$(IMAGES_PATH) \
+	  -e WEIGHTS_PATH=$(WEIGHTS_PATH) \
+	  $(DATA_MOUNT) \
+	  -v $(PWD)/params:/opt/ml/input/data/params \
+	  $(ECR_REPO):$(version)-$(DEVICE)
 
 
 # ensures all entries run every time since these aren't files

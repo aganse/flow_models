@@ -69,10 +69,6 @@ available, at
    application 6.  And likely GPU instance for wave-based inverse problem in
    application 7.
 
-   I've been experimenting with some scripts in subdir `awsbatch-support` to
-   kick off the training remotely in a Docker container via AWS ECR using AWS
-   Batch.  But that's not all ready/settled yet, so you can ignore that subdir.
-
 2. Create the python environment and install dependencies:
     ```
     > make create-env
@@ -116,15 +112,42 @@ available, at
     ```
 
 ### B. To run the training
-1. Enter the python environment created above if not already in:  `source .venv/bin/activate`
-2. Set environment variable `export TF_CPP_MIN_LOG_LEVEL=2` to squelch a number of status/info lines spewed by Tensorflow and Tensorflow
-    Probability (TFP) that I don't find too helpful and that make a mess in the console output.  (Similarly note I've put a python line
-    at the top of train.py to squelch `UserWarning`s that are spewed by TFP.)
-3. Set desired parameters in `train_flowmodelsN.py` (where the `N` is the number
-    of the application 1-7, ie working towards 7 train scripts for the 7
-    applications).  Refer to [`doc/config.md`](doc/config.md) for a consolidated
-    description of every user-facing parameter across the training scripts.
-4. Run `python train_flowmodelsN.py` (again where `N` is the application number).
+
+**Option 1 — directly in Python (local, no Docker):**
+
+1. Enter the python environment: `source .venvN/bin/activate`
+2. Optionally set `export TF_CPP_MIN_LOG_LEVEL=2` to reduce TensorFlow log noise.
+3. Edit `params/paramsN.json` to set desired hyperparameters. Refer to
+   [`doc/config.md`](doc/config.md) for a description of every parameter.
+4. Run `python train_flowmodelsN.py` (where `N` is 1, 2, etc.).
+
+**Option 2 — locally in Docker (CPU, for smoke-testing the container):**
+
+```bash
+make build-cpu
+make run-local SCRIPT=N DEVICE=cpu
+```
+
+**Option 3 — locally in Docker (GPU, on a GPU-equipped machine):**
+
+```bash
+make build-gpu
+make run-local SCRIPT=N DEVICE=gpu
+```
+
+**Option 4 — cloud training via SageMaker Training Jobs (recommended for full runs):**
+
+Edit `params/paramsN.json`, then:
+```bash
+make sm-run SCRIPT=N
+```
+See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup
+and monitoring details.
+
+**Option 5 — cloud training via AWS Batch (for queued/parallel job sweeps):**
+
+See [`awsbatch-support/README.md`](awsbatch-support/README.md) for full
+setup and submission instructions.
 
 ###
 

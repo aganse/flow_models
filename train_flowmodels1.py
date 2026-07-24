@@ -1,3 +1,5 @@
+import base64
+import json
 import os
 import warnings
 
@@ -9,6 +11,18 @@ from file_utils import get_data_generator
 from flow_model import default_training_sequence
 
 warnings.filterwarnings("ignore", category=UserWarning)  # TFP spews a number of these
+
+
+def _load_param_overrides(run_params, training_params, model_arch_params):
+    hp_path = "/opt/ml/input/config/hyperparameters.json"
+    if os.path.exists(hp_path):
+        with open(hp_path) as f:
+            hparams = json.load(f)
+        if "params" in hparams:
+            overrides = json.loads(base64.b64decode(hparams["params"]))
+            run_params.update(overrides.get("run_params", {}))
+            training_params.update(overrides.get("training_params", {}))
+            model_arch_params.update(overrides.get("model_arch_params", {}))
 
 
 def main():
@@ -51,6 +65,7 @@ def main():
         "realnvp_hidden_layers": [512, 512],  # 256,256 nodes/denselayer or filters/cnnlayer in affine coupling layers
         "validate_args": True,
     }
+    _load_param_overrides(run_params, training_params, model_arch_params)
     # List the param settings:
     print("")
     utils.print_run_params(**run_params, **training_params, **model_arch_params)
