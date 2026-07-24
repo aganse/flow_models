@@ -21,36 +21,6 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-def _patch_tfp_prefer_static_concat():
-    # TFP 0.25's Reshape bijector (used internally by Glow) calls
-    # prefer_static.concat([int32_tensor, int64_tensor]) in graph mode.
-    # tf.concat requires uniform dtypes; this casts int64 to int32 when the
-    # list contains a mix. Safe here since all values are shape tensors.
-    try:
-        from tensorflow_probability.python.internal import prefer_static as ps
-        if getattr(ps, "_glow_dtype_patch_applied", False):
-            return
-        _orig = ps.concat
-
-        def _concat(values, axis, name="concat"):
-            if isinstance(values, (list, tuple)):
-                dtypes = {v.dtype for v in values if isinstance(v, tf.Tensor)}
-                if tf.int32 in dtypes and tf.int64 in dtypes:
-                    values = [
-                        tf.cast(v, tf.int32)
-                        if isinstance(v, tf.Tensor) and v.dtype == tf.int64
-                        else v
-                        for v in values
-                    ]
-            return _orig(values, axis, name=name)
-
-        ps.concat = _concat
-        ps._glow_dtype_patch_applied = True
-    except Exception:
-        pass
-
-
-_patch_tfp_prefer_static_concat()
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.optimizers.schedules import ExponentialDecay
@@ -98,6 +68,56 @@ def _capture_and_save_summary(model, image_shape, output_dir, log_to_mlflow=Fals
     #     mlflow.log_artifact(summary_path, artifact_path="reports")
 
     return summary_path
+
+
+def _patch_tfp_prefer_static_concat():
+    """
+    This function is a monkey-patch, included here at the top of flow_models.py
+    to apply compatibility patches before anything in this module gets
+    instantiated or used.  Note this function is called below, immediately after
+    this function definition.
+
+    TFP 0.25 has a bug in its internal prefer_static.concat function: when Glow's
+    reshape operations run in TF graph mode, they call prefer_static.concat with
+    a list that mixes int32 and int64 tensors. TF's underlying tf.concat requires
+    all inputs to have the same dtype, so this mix causes a crash.
+
+    This patch monkey-patches that internal TFP function before it can be triggered.
+    It wraps the original prefer_static.concat with a version that detects the
+    int32/int64 mix and casts everything to int32 first, then calls the original.
+    The _glow_dtype_patch_applied guard ensures it only wraps once even if the
+    module is imported multiple times.
+
+    In short: it's a workaround for a TFP bug that only surfaces when using Glow
+    in graph mode. If you ever upgrade TFP past 0.25 and the bug is fixed upstream,
+    the patch is harmless (the guard and the try/except mean it degrades gracefully).
+    """
+
+    try:
+        from tensorflow_probability.python.internal import prefer_static as ps
+        if getattr(ps, "_glow_dtype_patch_applied", False):
+            return
+        _orig = ps.concat
+
+        def _concat(values, axis, name="concat"):
+            if isinstance(values, (list, tuple)):
+                dtypes = {v.dtype for v in values if isinstance(v, tf.Tensor)}
+                if tf.int32 in dtypes and tf.int64 in dtypes:
+                    values = [
+                        tf.cast(v, tf.int32)
+                        if isinstance(v, tf.Tensor) and v.dtype == tf.int64
+                        else v
+                        for v in values
+                    ]
+            return _orig(values, axis, name=name)
+
+        ps.concat = _concat
+        ps._glow_dtype_patch_applied = True
+    except Exception:
+        pass
+
+
+_patch_tfp_prefer_static_concat()
 
 
 class MLflowLoggingCallback(tf.keras.callbacks.Callback):
@@ -386,9 +406,9 @@ class FlowModel(tf.keras.Model):
         # Layer, so its variables are missed. Collect from both sources.
         seen = {}
         for v in super().trainable_variables:
-            seen[v.ref()] = v
+            seen[id(v)] = v
         for v in self.flow_bijector.trainable_variables:
-            seen.setdefault(v.ref(), v)
+            seen.setdefault(id(v), v)
         return list(seen.values())
 
     def print_vars(self):
@@ -448,7 +468,7 @@ class FlowModel(tf.keras.Model):
         bits-per-dimension value as a "within one image" value - an average
         over the current batch.
         """
-        images = data
+        images = data[0] if isinstance(data, (tuple, list)) else data
         if self.bijector_type == "glow":
             images = tf.reshape(images, (-1, *self.image_shape))
         else:

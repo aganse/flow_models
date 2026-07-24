@@ -31,7 +31,7 @@ def main():
     run_params = {
         "output_dir": "output",  # local artifacts storage area before possibly logging to mlflow
         "model_dir": "model/flowmodels1",  # local model storage area before possibly logging to mlflow
-        "dataset": "gmm",  # "moons", "gmm", "mvn"
+        "dataset": "mvn",  # "moons", "gmm", "mvn"
         "num_gen_sims": 1000,  # number of new simulated data to generate
         "do_train": True,  # true = training, false = inference w existing model in model_dir
         "num_outliers_to_highlight": 10,  # set >0 to highlight lowest-density latent points
@@ -40,8 +40,8 @@ def main():
         "num_epochs": 50,
         "batch_size": 128,
         "reg_level": 1e-5,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
-        # "learning_rate": 1e-4,  # scaler -> constant learning rate; vector of 3 -> lr schedule
-        "learning_rate": [1e-4, 750, 0.90],  # [initial_rate, decay_steps, decay_rate]
+        "learning_rate": 1e-4,  # scaler -> constant learning rate; vector of 3 -> lr schedule
+        # "learning_rate": [1e-4, 750, 0.90],  # [initial_rate, decay_steps, decay_rate]
         #     steps_per_epoch = num_data_input//batch_size
         #     step = steps_per_epoch * desired_epoch_of_decayed_lr
         #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
@@ -62,7 +62,7 @@ def main():
         "bijector": "realnvp-based",
         # realnvp-based params:
         "realnvp_flow_steps": 12,  # 8 number of realnvp-based affine coupling layers
-        "realnvp_hidden_layers": [512, 512],  # 256,256 nodes/denselayer or filters/cnnlayer in affine coupling layers
+        "realnvp_hidden_layers": [512, 512, 512],  # 256,256 nodes/denselayer or filters/cnnlayer in affine coupling layers
         "validate_args": True,
     }
     _load_param_overrides(run_params, training_params, model_arch_params)
