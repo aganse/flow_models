@@ -117,12 +117,15 @@ available, at
 
 1. Enter the python environment: `source .venvN/bin/activate`
 2. Optionally set `export TF_CPP_MIN_LOG_LEVEL=2` to reduce TensorFlow log noise.
-3. Edit `params/paramsN.json` to set desired hyperparameters. Refer to
-   [`doc/config.md`](doc/config.md) for a description of every parameter.
+3. Edit the parameter dicts near the top of `train_flowmodelsN.py` to set
+   desired hyperparameters. Refer to [`doc/config.md`](doc/config.md) for a
+   description of every parameter. (Note: `params/paramsN.json` is only read
+   in Docker/SageMaker runs, not in this direct-Python mode.)
 4. Run `python train_flowmodelsN.py` (where `N` is 1, 2, etc.).
 
 **Option 2 — locally in Docker (CPU, for smoke-testing the container):**
 
+Edit `params/paramsN.json`, then:
 ```bash
 make build-cpu
 make run-local SCRIPT=N DEVICE=cpu
@@ -130,6 +133,7 @@ make run-local SCRIPT=N DEVICE=cpu
 
 **Option 3 — locally in Docker (GPU, on a GPU-equipped machine):**
 
+Edit `params/paramsN.json`, then:
 ```bash
 make build-gpu
 make run-local SCRIPT=N DEVICE=gpu
@@ -145,6 +149,12 @@ See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup
 and monitoring details.
 
 **Option 5 — cloud training via AWS Batch (for queued/parallel job sweeps):**
+
+Edit the parameter dicts in `train_flowmodelsN.py`, rebuild and push the image
+(`make run-build` or `make push-to-ecr`), then run `make run-batchjob`.
+
+(Params-file override support for Batch, equivalent to Options 2–4, will be
+added soon.)
 
 See [`awsbatch-support/README.md`](awsbatch-support/README.md) for full
 setup and submission instructions.

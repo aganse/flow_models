@@ -1,32 +1,20 @@
-import base64
-import json
 import os
 import warnings
 
 import numpy as np
 import tensorflow as tf
 
-import utils
 from file_utils import get_data_generator
 from flow_model import default_training_sequence
+import utils
 
 warnings.filterwarnings("ignore", category=UserWarning)  # TFP spews a number of these
 
 
-def _load_param_overrides(run_params, training_params, model_arch_params):
-    hp_path = "/opt/ml/input/config/hyperparameters.json"
-    if os.path.exists(hp_path):
-        with open(hp_path) as f:
-            hparams = json.load(f)
-        if "params" in hparams:
-            overrides = json.loads(base64.b64decode(hparams["params"]))
-            run_params.update(overrides.get("run_params", {}))
-            training_params.update(overrides.get("training_params", {}))
-            model_arch_params.update(overrides.get("model_arch_params", {}))
-
-
 def main():
-    # User parameter settings
+
+    # Default user parameter settings:
+    # Can change here for local non-Docker usage; or change in params/params1.json for Docker use
     # -----------------------
     run_params = {
         "output_dir": "output",  # local artifacts storage area before possibly logging to mlflow
@@ -65,7 +53,7 @@ def main():
         "realnvp_hidden_layers": [512, 512, 512],  # 256,256 nodes/denselayer or filters/cnnlayer in affine coupling layers
         "validate_args": True,
     }
-    _load_param_overrides(run_params, training_params, model_arch_params)
+    utils.load_param_overrides(run_params, training_params, model_arch_params)
     # List the param settings:
     print("")
     utils.print_run_params(**run_params, **training_params, **model_arch_params)
@@ -79,7 +67,7 @@ def main():
         dataset=run_params["dataset"],
         batch_size=training_params["batch_size"],
     )
-    sample_batch = _unwrap_batch(next(train_generator))
+    sample_batch = utils.unwrap_batch(next(train_generator))
     print("train_generator test: shape of one batch: ", sample_batch.shape, "\n")
     datain_plot_path = None
     if run_params["dataset"] in ["moons", "gmm", "mvn"]:
@@ -87,7 +75,7 @@ def main():
         if highlight_count <= 0:
             # Quick sanity-check plot of some of the data for this group of 2D problems
             input_data_test = np.concatenate(
-                [_unwrap_batch(next(train_generator)) for _ in range(20)], axis=0
+                [utils.unwrap_batch(next(train_generator)) for _ in range(20)], axis=0
             )
             utils.plot_pts_2d(
                 input_data_test,
@@ -251,16 +239,12 @@ def main():
         run_params["mlflow_run_open"] = False
 
 
-def _unwrap_batch(batch):
-    return batch[0] if isinstance(batch, (tuple, list)) else batch
-
-
 def _collect_samples_from_generator(generator, num_samples):
     """Accumulate exactly num_samples items from a generator that yields batches."""
     collected = []
     total = 0
     while total < num_samples:
-        batch = _unwrap_batch(next(generator))
+        batch = utils.unwrap_batch(next(generator))
         take = min(num_samples - total, batch.shape[0])
         collected.append(np.asarray(batch[:take], dtype=np.float32))
         total += take
