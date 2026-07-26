@@ -31,12 +31,13 @@ EXTRA_ARGS=type=EC2,${NETWORKING},${ROLES},tags={Name=AWSBatchInstance}
 what-to-do:
 	# Just a quick summary of available makefile macros, group by section:
 	@echo "once/rarely:    create-ecr-repo create-codebuild-role create-batch-instance-profile"
-	@echo "sometimes:      create-codebuild-project run-build"
+	@echo "sometimes:      create-codebuild-project run-build [BRANCH=main] [DEVICE=gpu]"
 	@echo "sometimes:      create-compute-env create-job-queue register-job-definition"
 	@echo "more often:     run-batchjob"
+	@echo "build checks:   build-status BUILD=id  build-logs BUILD=id"
 	@echo "image checks:   list-ecr-repos"
 	@echo "compute checks: list-compute-resources delete-compute-resources1 delete-compute-resources2"
-	@echo "job checks:     list-job-status JOBID=12345678"
+	@echo "job checks:     list-jobs  list-job-status JOBID=id  batch-logs JOBID=id  cancel-job JOBID=id"
 
 create-ecr-repo:
 	# Create the repo in ECR where this app's docker images will be held on AWS
@@ -111,13 +112,50 @@ run-build:
 	#   make run-build                          # main+gpu -> :main-gpu and :latest
 	#   make run-build BRANCH=myfeature         # myfeature+gpu -> :myfeature-gpu only
 	#   make run-build BRANCH=myfeature DEVICE=cpu  # -> :myfeature-cpu only
-	@aws codebuild start-build --project-name ${CODEBUILD_PROJ} \
+	$(eval BUILD_ID := $(shell aws codebuild start-build --project-name ${CODEBUILD_PROJ} \
 	  --source-version $(BRANCH) \
 	  --environment-variables-override \
 	    name=DEVICE,value=$(DEVICE),type=PLAINTEXT \
-	    name=BRANCH_TAG,value=$(BRANCH),type=PLAINTEXT
-	# to check build status in cli:
-	# aws codebuild batch-get-builds --ids <arn:etc.etc.etc from start-build output, or from console>
+	    name=BRANCH_TAG,value=$(BRANCH),type=PLAINTEXT \
+	  --query 'build.id' --output text))
+	@echo "Submitted build: $(BUILD_ID)"
+	@echo "Check status: make build-status BUILD=$(BUILD_ID)"
+	@echo "Check logs:   make build-logs BUILD=$(BUILD_ID)"
+
+build-status:
+	# Show status of a submitted CodeBuild run.
+	# Usage: make build-status BUILD=<id-from-run-build>
+ifndef BUILD
+	@echo "This makefile macro must be called as:"
+	@echo "  make build-status BUILD=<id-from-run-build>"
+	@echo
+	@exit 1
+endif
+	@aws codebuild batch-get-builds --ids $(BUILD) \
+	  --query 'builds[0].{Status:buildStatus,Phase:currentPhase,Start:startTime,End:endTime}' \
+	  --output table --no-cli-pager
+
+build-logs:
+	# Fetch CloudWatch logs for a CodeBuild run.
+	# Usage: make build-logs BUILD=<id-from-run-build>
+ifndef BUILD
+	@echo "This makefile macro must be called as:"
+	@echo "  make build-logs BUILD=<id-from-run-build>"
+	@echo
+	@exit 1
+endif
+	@GROUP=$$(aws codebuild batch-get-builds --ids $(BUILD) \
+	  --query 'builds[0].logs.groupName' --output text 2>/dev/null); \
+	STREAM=$$(aws codebuild batch-get-builds --ids $(BUILD) \
+	  --query 'builds[0].logs.streamName' --output text 2>/dev/null); \
+	if [ -z "$$GROUP" ] || [ "$$GROUP" = "None" ]; then \
+	  echo "No logs found yet for build $(BUILD)"; \
+	else \
+	  aws logs get-log-events \
+	    --log-group-name "$$GROUP" \
+	    --log-stream-name "$$STREAM" \
+	    --query 'events[*].message' --output text --no-cli-pager; \
+	fi
 
 
 
@@ -163,10 +201,34 @@ register-job-definition:
 
 run-batchjob:
 	# Run the batch job in the container from ECR, on an AWS remote GPU instance.
-	@aws batch submit-job --job-name MyGPUJob --job-queue ${JOB_QUEUE_NAME} --job-definition ${JOB_DEF_NAME} --no-cli-pager
-	# Command returns immediately and provides a job-id, to enter for check-job-status and cancel-job macros.
-	# Job log output is found in the AWS CloudWatch Console:
-	#     https://us-west-2.console.aws.amazon.com/cloudwatch/home?region=us-west-2
+	$(eval JOB_ID := $(shell aws batch submit-job --job-name MyGPUJob \
+	  --job-queue ${JOB_QUEUE_NAME} --job-definition ${JOB_DEF_NAME} \
+	  --query 'jobId' --output text --no-cli-pager))
+	@echo "Submitted: $(JOB_ID)"
+	@echo "Check status: make list-job-status JOBID=$(JOB_ID)"
+	@echo "Check logs:   make batch-logs JOBID=$(JOB_ID)"
+
+batch-logs:
+	# Fetch CloudWatch logs for a Batch job.
+	# Usage: make batch-logs JOBID=<id-from-run-batchjob>
+ifndef JOBID
+	@echo "This makefile macro must be called as:"
+	@echo "  make batch-logs JOBID=<id-from-run-batchjob>"
+	@echo
+	@exit 1
+endif
+	@LOG_STREAM=$$(aws logs describe-log-streams \
+	  --log-group-name /aws/batch/job \
+	  --log-stream-name-prefix test-debug/default/$(JOBID) \
+	  --query 'logStreams[0].logStreamName' --output text 2>/dev/null); \
+	if [ "$$LOG_STREAM" = "None" ] || [ -z "$$LOG_STREAM" ]; then \
+	  echo "No log stream found yet for job $(JOBID)"; \
+	else \
+	  aws logs get-log-events \
+	    --log-group-name /aws/batch/job \
+	    --log-stream-name "$$LOG_STREAM" \
+	    --query 'events[*].message' --output text --no-cli-pager; \
+	fi
 
 
 
@@ -259,7 +321,8 @@ endif
 # This listing ensures all entries run every time since these aren't files.
 .PHONY: create-ecr-repo check-codebuild-role-exists create-codebuild-role \
 	create-batch-instance-profile create-codebuild-project run-build \
-	create-compute-env create-job-queue register-job-definition run-batch \
-	list-ecr-repos list-roles delete-roles \
+	build-status build-logs \
+	create-compute-env create-job-queue register-job-definition run-batchjob \
+	batch-logs list-ecr-repos list-roles delete-roles \
 	list-compute-resources delete-compute-resources1 delete-compute-resources2 \
-	check-job-status cancel-job push-to-ecr
+	list-job-status cancel-job push-to-ecr

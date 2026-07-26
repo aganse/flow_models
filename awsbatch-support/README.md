@@ -46,8 +46,20 @@ Image builds run on AWS CodeBuild (faster than local builds, avoids large upload
 
 ```bash
 make create-codebuild-project  # one-time: set up CodeBuild project linked to this repo
-make run-build                 # trigger a build; pushes to ECR tagged with git hash + latest
+make run-build                          # main+gpu -> :main-gpu and :latest
+make run-build BRANCH=myfeature         # myfeature+gpu -> :myfeature-gpu only
+make run-build BRANCH=myfeature DEVICE=cpu  # -> :myfeature-cpu only
 ```
+
+`BRANCH` defaults to `main`, `DEVICE` defaults to `gpu`. `:latest` always
+points to the most recent `main-gpu` build and is never updated by branch builds.
+
+```bash
+make build-status BUILD=<id>   # show status of a submitted build
+make build-logs BUILD=<id>     # fetch CloudWatch logs for a build
+```
+
+The build ID is printed by `make run-build` immediately after submission.
 
 To push a locally-built image instead:
 
@@ -59,16 +71,19 @@ make push-to-ecr DEVICE=gpu    # push to ECR
 ## Submitting a job
 
 ```bash
-make run-batchjob              # submit job; returns a JOBID immediately
+make run-batchjob              # submit job; prints JOBID immediately
 ```
 
 ## Monitoring jobs
 
 ```bash
-make list-jobs                 # show all jobs across all statuses
+make list-jobs                   # show all jobs across all statuses
 make list-job-status JOBID=<id>  # check status of a specific job
-make cancel-job JOBID=<id>     # cancel a running job
+make batch-logs JOBID=<id>       # fetch CloudWatch logs for a job
+make cancel-job JOBID=<id>       # cancel a running job
 ```
+
+The job ID is printed by `make run-batchjob` immediately after submission.
 
 ## Resource inspection and cleanup
 

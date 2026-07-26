@@ -42,6 +42,13 @@ make run-build BRANCH=myfeature DEVICE=cpu  # -> :myfeature-cpu only
 points to the most recent `main-gpu` build and is never updated by branch
 builds. The same Docker image is used for both SageMaker and AWS Batch runs.
 
+```bash
+make build-status BUILD=<id>   # show status of a submitted build
+make build-logs BUILD=<id>     # fetch CloudWatch logs for a build
+```
+
+The build ID is printed by `make run-build` immediately after submission.
+
 ## Configuring hyperparameters
 
 Edit the params file for the script you intend to run before submitting:
