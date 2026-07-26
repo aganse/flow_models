@@ -16,6 +16,7 @@ import glob
 import io
 import os
 import re
+import sys
 from datetime import datetime
 import numpy as np
 import tensorflow as tf
@@ -568,7 +569,15 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         experiment_name = training_params.get(
             "tracking_expt_name", run_params.get("dataset", "flow_model_training")
         )
-        mlflow.set_experiment(experiment_name)
+        try:
+            mlflow.set_experiment(experiment_name)
+        except Exception as e:
+            print(
+                f"FATAL: cannot reach MLflow server at "
+                f"{mlflow.get_tracking_uri()!r}: {e}",
+                flush=True,
+            )
+            sys.exit(1)
         dataset = run_params.get("dataset", "flow_model_run")
         num_gen = run_params.get("num_gen_sims", "NA")
         run_name = f"{dataset}_{num_gen}"
@@ -587,6 +596,22 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         if active_run:
             run_params["mlflow_run_id"] = active_run.info.run_id
         mlflow_run_started = True
+
+    if training_params.get("save_model_weights"):
+        weights_dest = os.environ.get("WEIGHTS_PATH", "")
+        if weights_dest.startswith("s3://"):
+            import boto3
+            from urllib.parse import urlparse
+            parsed = urlparse(weights_dest)
+            try:
+                boto3.client("s3").head_bucket(Bucket=parsed.netloc)
+            except Exception as e:
+                print(
+                    f"FATAL: cannot access S3 bucket {parsed.netloc!r} "
+                    f"for model weights upload: {e}",
+                    flush=True,
+                )
+                sys.exit(1)
 
     if run_params["do_train"]:
         print("Training model:", flush=True)

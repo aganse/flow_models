@@ -143,8 +143,9 @@ make run-local SCRIPT=N DEVICE=gpu
 
 Edit `params/paramsN.json`, then:
 ```bash
-make sm-run SCRIPT=N              # uses :latest (= main-gpu image)
-make sm-run SCRIPT=N TAG=foo-gpu  # use a specific image tag
+make run-build BRANCH=myfeature DEVICE=gpu  # default BRANCH=main, default DEVICE=gpu
+make sm-run SCRIPT=N                        # uses :latest (by default points to main-gpu image)
+make sm-run SCRIPT=N TAG=mybranch-gpu       # use a specific image tag (of form gitbranch-device)
 ```
 See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup
 and monitoring details.
