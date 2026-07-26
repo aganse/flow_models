@@ -13,7 +13,8 @@ CODEBUILD_PROJ=flow_models_build
 COMPUTE_ENV_NAME=GPUcompenv
 JOB_QUEUE_NAME=GPUJobQueue
 export JOB_DEF_NAME=GPUJobDefinition
-DEVICE=gpu  # cpu or gpu
+BRANCH ?= main  # git branch to build from; overrride with e.g. make run-build BRANCH=myfeature
+DEVICE ?= gpu   # cpu or gpu; overridable e.g. make run-build DEVICE=cpu
 
 
 # these vars are used in commands in the make macros down below:
@@ -104,9 +105,17 @@ create-codebuild-project:
 	    # (if needed auth later, we could append ",auth={type=OAUTH,resource=token}" to --source arg)
 
 run-build:
-	# Actually run the process to get code from Github branch, build docker image, and push to ECR repo.
-	# (occasional run - to push new training code/image)
-	@aws codebuild start-build --project-name ${CODEBUILD_PROJ}
+	# Build and push Docker image to ECR via CodeBuild. (occasional run)
+	# Usage: make run-build [BRANCH=main] [DEVICE=gpu]
+	# Examples:
+	#   make run-build                          # main+gpu -> :main-gpu and :latest
+	#   make run-build BRANCH=myfeature         # myfeature+gpu -> :myfeature-gpu only
+	#   make run-build BRANCH=myfeature DEVICE=cpu  # -> :myfeature-cpu only
+	@aws codebuild start-build --project-name ${CODEBUILD_PROJ} \
+	  --source-version $(BRANCH) \
+	  --environment-variables-override \
+	    name=DEVICE,value=$(DEVICE),type=PLAINTEXT \
+	    name=BRANCH_TAG,value=$(BRANCH),type=PLAINTEXT
 	# to check build status in cli:
 	# aws codebuild batch-get-builds --ids <arn:etc.etc.etc from start-build output, or from console>
 

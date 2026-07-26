@@ -33,10 +33,14 @@ make sm-create-role     # create SageMaker execution IAM role
 Image builds run on AWS CodeBuild (shared with Batch pipeline):
 
 ```bash
-make run-build          # trigger CodeBuild; pushes to ECR tagged with git hash + latest
+make run-build                          # main+gpu -> :main-gpu and :latest
+make run-build BRANCH=myfeature         # myfeature+gpu -> :myfeature-gpu only
+make run-build BRANCH=myfeature DEVICE=cpu  # -> :myfeature-cpu only
 ```
 
-The same Docker image is used for both SageMaker and AWS Batch runs.
+`BRANCH` defaults to `main`, `DEVICE` defaults to `gpu`. `:latest` always
+points to the most recent `main-gpu` build and is never updated by branch
+builds. The same Docker image is used for both SageMaker and AWS Batch runs.
 
 ## Configuring hyperparameters
 
@@ -62,9 +66,12 @@ Key `training_params` entries relevant to cloud runs:
 ## Submitting a job
 
 ```bash
-make sm-run SCRIPT=1   # submit train_flowmodels1.py
-make sm-run SCRIPT=2   # submit train_flowmodels2.py
+make sm-run SCRIPT=1                    # submit train_flowmodels1.py using :latest
+make sm-run SCRIPT=2                    # submit train_flowmodels2.py using :latest
+make sm-run SCRIPT=2 TAG=myfeature-gpu  # use a specific image tag
 ```
+
+`TAG` defaults to `latest` (= `main-gpu`).
 
 The job runs on `ml.g4dn.xlarge`, reads training data from `IMAGES_PATH` via
 FastFile mode (on-demand S3 streaming, no full copy), logs metrics to the

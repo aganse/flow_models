@@ -34,18 +34,19 @@ def main():
         "regen_source": "flow_base",  # "pca_stats", "flow_base", or "train_pts" for sim images
     }
     training_params = {
-        "num_epochs": 50,
+        "num_epochs": 150,
         "batch_size": 64,  # max on g4dn.xlarge with current image size (fills memory)
         "reg_level": 1e-5,  # regularization level for the L2 reg in realNVP hidden layers
+        "learning_rate": [4e-5, 7110, 0.85],  # decay 15% every ~30 epochs  # [initial_rate, decay_steps, decay_rate]
         # "learning_rate": 1e-4,  # scaler -> constant learning rate; vector of 3 -> lr schedule
-        "learning_rate": [1e-4, 2370, 0.75],  # 7.5e-5 at 10th epoch  # [initial_rate, decay_steps, decay_rate]
+        # "learning_rate": [1e-4, 2370, 0.75],  # 7.5e-5 at 10th epoch  # [initial_rate, decay_steps, decay_rate]
         #     decayed_lr = initial_rate * decay_rate ^ (step / decay_steps)
         #     decay_steps = step * ln(decay_rate) / ln(decayed_lr / initial_rate)
-        "early_stopping_patience": 30,  # value <=0 turns off early_stopping
+        "early_stopping_patience": 40,  # value <=0 turns off early_stopping
         # note current model arch has 534,544 params:
         "num_data_input": 5100,  # num training data pts or images (whether pts or files)
         "augmentation_factor": 3,  # set >1 to have augmentation turned on
-        "grad_norm_thresh": 25,  # if not None, clip norm of gradients at this thresh
+        "grad_norm_thresh": 75,  # if not None, clip norm of gradients at this thresh
         "log_scale_clip": 4,  # clip log-scale outputs to [-value, value]; <=0 disables
         "jit_compile": True,  # boolean, normally True but sometimes useful in debugging
         "tracking_tool": "mlflow",  # "tensorboard" or "mlflow"

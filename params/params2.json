@@ -15,31 +15,31 @@
     "regen_source": "pca_stats"
   },
   "training_params": {
-    "num_epochs": 50,
-    "batch_size": 128,
+    "num_epochs": 150,
+    "batch_size": 64,
     "reg_level": 1e-5,
-    "learning_rate": 1e-5,
-    "early_stopping_patience": 10,
+    "learning_rate": [4e-5, 7110, 0.85],
+    "early_stopping_patience": 40,
     "num_data_input": 5100,
-    "augmentation_factor": 10,
-    "grad_norm_thresh": 20,
+    "augmentation_factor": 3,
+    "grad_norm_thresh": 75,
     "log_scale_clip": 4,
     "jit_compile": true,
     "tracking_tool": "mlflow",
     "tracking_port": 5000,
     "tracking_expt_name": "flowmodels2",
-    "save_model_weights": false,
+    "save_model_weights": true,
     "checkpoint_every_n_epochs": 5
   },
   "model_arch_params": {
     "image_shape": [128, 128, 3],
-    "bijector": "realnvp-based",
-    "realnvp_flow_steps": 18,
-    "realnvp_hidden_layers": [512, 512, 512],
+    "bijector": "glow",
+    "realnvp_flow_steps": 6,
+    "realnvp_hidden_layers": [512, 512],
     "realnvp_permutation": "alternating",
     "glow_num_blocks": 3,
-    "glow_steps_per_block": 8,
-    "glow_num_hidden": 256,
-    "validate_args": true
+    "glow_steps_per_block": 6,
+    "glow_num_hidden": 128,
+    "validate_args": false
   }
 }

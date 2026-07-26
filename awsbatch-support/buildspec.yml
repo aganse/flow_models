@@ -6,12 +6,14 @@ phases:
       - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
   build:
     commands:
-      - echo "imagestring - ECR_REPO_URI,IMAGE_TAG,DEVICE - ${ECR_REPO_URI},${IMAGE_TAG},${DEVICE}"
+      - echo "imagestring - ECR_REPO_URI,IMAGE_TAG,DEVICE,BRANCH_TAG - ${ECR_REPO_URI},${IMAGE_TAG},${DEVICE},${BRANCH_TAG}"
       - docker info | head -26
       - docker ps
       - docker build -t ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} .
-      - docker tag ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} ${ECR_REPO_URI}:latest
+      - docker tag ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} ${ECR_REPO_URI}:${BRANCH_TAG}-${DEVICE}
+      - if [ "${BRANCH_TAG}" = "main" ] && [ "${DEVICE}" = "gpu" ]; then docker tag ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} ${ECR_REPO_URI}:latest; fi
   post_build:
     commands:
       - docker push ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE}
-      - docker push ${ECR_REPO_URI}:latest
+      - docker push ${ECR_REPO_URI}:${BRANCH_TAG}-${DEVICE}
+      - if [ "${BRANCH_TAG}" = "main" ] && [ "${DEVICE}" = "gpu" ]; then docker push ${ECR_REPO_URI}:latest; fi

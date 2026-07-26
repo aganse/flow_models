@@ -19,6 +19,7 @@ SM_VOLUME_SIZE=50
 SM_MAX_RUNTIME=86400
 SM_MAX_WAIT ?= 90000
 SM_JOB_PREFIX=flowmodels
+TAG ?= latest  # ECR image tag to use; override with e.g. make sm-run SCRIPT=2 TAG=cleanup-gpu
 
 # Spot instance flags: set when SPOT=1 is passed on the command line.
 # SM_MAX_WAIT is the total wall-clock deadline including interruption waits
@@ -41,7 +42,7 @@ SM_ROLE_ARN=arn:aws:iam::${AWS_ACCT_ID}:role/SageMakerExecutionRole
 sm-what-to-do:
 	@echo "once/rarely:   sm-create-role"
 	@echo "sometimes:     run-build  (shared CodeBuild pipeline, pushes to ECR)"
-	@echo "more often:    sm-run SCRIPT=1  (or SCRIPT=2, etc.)"
+	@echo "more often:    sm-run SCRIPT=1 [TAG=main-gpu]  (TAG defaults to latest)"
 	@echo "job checks:    sm-list-jobs  sm-status JOB=name  sm-logs JOB=name  sm-cancel JOB=name"
 
 sm-create-role:
@@ -70,7 +71,7 @@ endif
 	@aws sagemaker create-training-job \
 	  --training-job-name $(JOB_NAME) \
 	  --algorithm-specification \
-	    TrainingImage=$(ECR_REPO_URI):latest,TrainingInputMode=FastFile \
+	    TrainingImage=$(ECR_REPO_URI):$(TAG),TrainingInputMode=FastFile \
 	  --role-arn $(SM_ROLE_ARN) \
 	  --input-data-config \
 	    '[{"ChannelName":"training","DataSource":{"S3DataSource":{"S3Uri":"${IMAGES_PATH}","S3DataType":"S3Prefix","S3DataDistributionType":"FullyReplicated"}}}]' \

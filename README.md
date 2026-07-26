@@ -143,7 +143,8 @@ make run-local SCRIPT=N DEVICE=gpu
 
 Edit `params/paramsN.json`, then:
 ```bash
-make sm-run SCRIPT=N
+make sm-run SCRIPT=N              # uses :latest (= main-gpu image)
+make sm-run SCRIPT=N TAG=foo-gpu  # use a specific image tag
 ```
 See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup
 and monitoring details.
@@ -151,7 +152,7 @@ and monitoring details.
 **Option 5 — cloud training via AWS Batch (for queued/parallel job sweeps):**
 
 Edit the parameter dicts in `train_flowmodelsN.py`, rebuild and push the image
-(`make run-build` or `make push-to-ecr`), then run `make run-batchjob`.
+(`make run-build [BRANCH=main] [DEVICE=gpu]`), then run `make run-batchjob`.
 
 (Params-file override support for Batch, equivalent to Options 2–4, will be
 added soon.)
