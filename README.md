@@ -1,119 +1,81 @@
 # flow_models
 
-Normalizing-flow models are invertible neural networks (INNs) — a type of
-generative model that allows not only generating new samples from the learned
-distribution (which GANs and VAEs do too) but also exact likelihood computation
-as well (which GANs and VAEs do not).  This is accomplished with an
-architecture that ensures all transformations are reversible and the Jacobian
-determinant is efficiently computable.  By modeling probabilities directly,
-INNs allow for a range of other applications too - a real Swiss-army-knife of
+Normalizing-flow models are invertible neural networks (INNs) — generative
+models that support exact likelihood computation (unlike GANs and VAEs) by
+ensuring all transformations are invertible with efficiently computable
+Jacobians.  This enables generative image modeling, anomaly detection,
+classification, parameter estimation, and Bayesian inverse problems — all
+from the same architecture, just with different input/output partitioning.
+INNs allow for such a range of applications - a real Swiss-army-knife of
 the modeling world that I'm recently fascinated with.  <IMG SRC="doc/sak.jpg" ALT="" WIDTH=25>
 
 <IMG SRC="doc/INNfig_3sec.gif" ALT="Seven applications of flow-model in different forms" WIDTH=700>
 
 These normalizing-flow models transform complex data distributions into more
 tractable ones (usually Gaussian) in which it's feasible to do probabilistic
-calculations such as anomaly detection for example.  But these models allow far
-more than anomaly detection - their capabilities allow INNs to cover generative
-image modeling, generative classification, parameter estimation on
-ill-conditioned problems, and (ill-posed) inverse problems with or without
-noise on the data.  All of these stem from the theme of mapping one probability
-distribution into another.
+calculations.  The diagram above shows seven such applications; each frame's
+imagery references an example and a key paper (cited at the bottom of this
+README).  This implementation uses TensorFlow Probability, which provides clean
+building blocks for these models.  See also:
+- ["Flow_models: Overview / Introduction"](http://research.ganse.org/datasci/flow_models)
+- ["Flow_models 1: Distribution mapping"](http://research.ganse.org/datasci/flow_models/flow_models_1.html)
+- ["Flow_models 2: Generative image modeling"](http://research.ganse.org/datasci/flow_models/flow_models_2.html)
 
-Other implementations of INNs I've seen out there only cover one specific
-application and with a lot of bespoke code.  But the Tensorflow Probability
-package provides almost everything needed to implement these models in a more
-encapsulated, cleaner, and easier to understand way (at least for me!).  Of
-course as I expand this work I'm wrestling a number of tradeoffs in what to
-generalize/simply via TFP and what to explicitly implement - part of the
-learning process for me.
-
-The above diagram summarizes, for different applications, variations in how the
-N-dimensional model inputs are mapped through the flow model to N-dimensional
-outputs that include a latent multivariate standard normal distribution to
-capture some or all of the complex variations on the input side.  All those
-output points can each be mapped back though the model to the inputs as well,
-important in the image generation, uncertainty quantifaction, and inverse
-problems among others.  The little images in each frame of the gif are subtle
-references to the example applications I'm implementing for each variation, and
-key research papers from the literature that describe these variations one at
-a time.  Sorry, I acknowledge that at this summary level I'm not currently
-describing what all those little images and details are yet; the papers are
-referenced at the bottom of this readme though.
-
-Work is currently still in progress - I'm gradually implementing the series of
-7 applications in the figure - currently #2 is fully implemented (documented
-at
-["Flow_models 2: Image generation and anomaly detection as two sides of the same coin"](http://research.ganse.org/datasci/flow_models/flow_models_2.html),
-and as the first comprised the bulk of the work - the rest are variations using
-same modeling code).  Instructions for using/running that follow below, and
-similar ones are upcoming for the other applications as well.  Point being,
-it's all the same model, just with a few variations in the partitioning of the
-inputs and outputs.  The overview/introduction article to the series is also
-available, at
-["Flow_models: Overview / Introduction"](http://research.ganse.org/datasci/flow_models).
+There are different ways to train/run this repo's models, as referred to in sections A and B below:
+- Option 1: directly in Python (local in python virtural environment, no Docker)
+- Option 2: locally in Docker (CPU, for smoke-testing the container)
+- Option 3: locally in Docker (GPU, on a GPU-equipped machine or EC2 instance)
+- Option 4: cloud training via SageMaker Training Jobs (for single full runs)
+- Option 5: cloud training via AWS Batch (for queued/parallel job sweeps)
 
 
 ### A. To install/prepare
-1. For full runs on a GPU-enabled EC2 instance I recommend following
+
+1. **(Option 3 only; local/Docker/GPU) Set up a GPU-equipped machine.**  For
+   local GPU Docker runs, follow
    [these instructions](https://github.com/aganse/py_tf2_gpu_dock_mlflow/blob/main/doc/aws_ec2_install.md)
-   from my [py_tf2_gpu_dock_mlflow](https://github.com/aganse/py_tf2_gpu_dock_mlflow)
-   repository to set that instance up.  A GPU instance is recommended for the
-   image based application runs.
+   to configure a GPU-enabled EC2 instance.  For cloud runs (Options 4–5) no
+   local GPU or EC2 setup is needed — training runs entirely on AWS.
 
-   The 2D and 3D data-points based application runs (applications 1, 4, 5)  are
-   fine on a cheap CPU instance (I've been just running on a t3.small for those).
-
-   I haven't gotten to the later-numbered application runs yet but I'm guessing
-   either a longer t3.small run or running on a higher t3 CPU instance for
-   application 6.  And likely GPU instance for wave-based inverse problem in
-   application 7.
-
-2. Create the python environment and install dependencies:
+2. **(Option 1 only; local/pyenv/no-Docker) Create the Python environment and
+   install dependencies:**
     ```
-    > make create-env
-    Creating/installing new python env /home/ubuntu/src/python/flow_models/.venv3
+    make create-env           # creates .venvN and pip-installs requirements.txt
+    source .venvN/bin/activate
+    make install-dev          # installs requirements-dev.txt for tests/linting
     ```
-    (this is just a convenience macro to run the usual `python3 -m venv .venv &&
-    source .venv/bin/activate && pip install -r requirements.txt`.  except note
-    this macro creates new .venvN subdirectories incrementing N to avoid
-    overwriting existing env subdirectories.)
+   Not needed for Docker or cloud runs — dependencies are baked into the image.
 
-3. Get images if using image applications like in applications 2 and 3:
+3. **Get training images** (for image-based applications like `train_flowmodels2.py`):
 
     Of course you can use whatever images you want.  For my experimentation I
-    used the really nicely curated Kaggle dataset
+    used the nicely curated Kaggle dataset
     [animal-faces](https://www.kaggle.com/datasets/andrewmvd/animal-faces)
-    which contains approx 5000 cats, approx 5000 dogs, and approx 5000 misc
-    wild animals (fox, leopard, lion, tiger, wolf, etc).
+    which contains ~5000 cats, ~5000 dogs, and ~5000 misc wild animals (fox,
+    leopard, lion, tiger, wolf, etc).
 
-    If using a dedicated GPU-enabled instance, you could save these image files
-    directly on that instance in a `data` subdir within the `flow_models` repo
-    directory.  For that case the URIs for train_generator and other_generator
-    in train.py can simply be `"data/train"` for example.  Or you can use image
-    files in an S3 bucket, whether in the dedicated GPU-enabled instance or
-    in a batch configuration.  For that case the URIs should have the form
-    `"s3://mybucket/myprefix/train"`.
+    - for run options 1–3 (local): place images in some directory (`data/`) and
+      set `IMAGES_PATH` to that path.
+    - for run options 4–5 (cloud): upload to S3 and set `IMAGES_PATH=s3://mybucket/prefix`.
 
-    This is not supervised learning so labels are not used for training, but
-    it can still be useful to reserve some validation data to experiment with
-    after training anyway.  Whether locally or in S3, I find the following
-    directory structure helpful.  Note the data generator reading the files
-    will combine all subdirectories of files together, so `cat` and `beachball`
-    images will be mixed together in the validation dataset:
+    Use the following directory structure (but note subdirectories are merged by
+    the data generator, so `cat` and `beachball` images mix together in the below).
+    This is not a supervised learning model so labels are not used for training,
+    but for validation this directory structure provides a convenient labeling of
+    what image contents are in the dataset.
 
     ```
-    data/                <-- or s3 bucket at this level
+    data/                <-- or s3://mybucket/prefix/
         train/
             cat/
         val/
-            beachball/   <-- these show up as outliers in gaussian latent points
+            beachball/   <-- these show up as outliers in latent space
             cat/         <-- these don't
     ```
 
 ### B. To run the training
 
-**Option 1 — directly in Python (local, no Docker):**
+**Option 1 — directly in Python (local, in python virtual environment, no Docker):**
 
 1. Enter the python environment: `source .venvN/bin/activate`
 2. Optionally set `export TF_CPP_MIN_LOG_LEVEL=2` to reduce TensorFlow log noise.
@@ -144,8 +106,10 @@ make run-local SCRIPT=N DEVICE=gpu
 Edit `params/paramsN.json`, then:
 ```bash
 make run-build BRANCH=myfeature DEVICE=gpu  # default BRANCH=main, default DEVICE=gpu
+                                            # (also note build-status and build-logs targets)
 make sm-run SCRIPT=N                        # uses :latest (by default points to main-gpu image)
 make sm-run SCRIPT=N TAG=mybranch-gpu       # use a specific image tag (of form gitbranch-device)
+                                            # (also note sm-list-jobs, sm-status, sm-logs targets)
 ```
 See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup
 and monitoring details.

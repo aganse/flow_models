@@ -81,7 +81,7 @@ endif
 	  $(SM_SPOT_FLAGS) \
 	  $(SM_STOPPING) \
 	  --hyper-parameters "{\"params\":\"$(PARAMS_BLOB)\"}" \
-	  --environment '{"TRAINING_SCRIPT":"$(SCRIPT)","MLFLOW_TRACKING_URI":"${MLFLOW_TRACKING_URI}","IMAGES_PATH":"/opt/ml/input/data/training","WEIGHTS_PATH":"${WEIGHTS_PATH}"}' \
+	  --environment '{"TRAINING_SCRIPT":"$(SCRIPT)","IMAGE_TAG":"$(TAG)","MLFLOW_TRACKING_URI":"${MLFLOW_TRACKING_URI}","IMAGES_PATH":"/opt/ml/input/data/training","WEIGHTS_PATH":"${WEIGHTS_PATH}"}' \
 	  --vpc-config Subnets=${SM_SUBNET},SecurityGroupIds=${SM_SG} \
 	  --no-cli-pager
 	@echo "Submitted: $(JOB_NAME)"
