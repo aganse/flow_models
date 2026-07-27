@@ -64,7 +64,7 @@ The build ID is printed by `make run-build` immediately after submission.
 To push a locally-built image instead:
 
 ```bash
-make build-gpu                 # build GPU image locally
+make local-build DEVICE=gpu    # build GPU image locally
 make push-to-ecr DEVICE=gpu    # push to ECR
 ```
 

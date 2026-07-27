@@ -43,13 +43,9 @@ unittests:
 lint:
 	flake8 .
 
-build-cpu:
-	# Build CPU image for local dev/testing.
-	docker build -t $(ECR_REPO):$(version)-cpu .
-
-build-gpu:
-	# Build GPU image for cloud training (best done via make run-build on AWS CodeBuild).
-	docker build -t ${ECR_REPO}:$(version)-gpu .
+local-build:
+	# Build image locally for dev/testing. Usage: make local-build [DEVICE=cpu]
+	docker build -t $(ECR_REPO):$(version)-$(DEVICE) .
 
 run-local:
 	# Run a training script locally in Docker.
@@ -74,4 +70,4 @@ endif
 
 
 # ensures all entries run every time since these aren't files
-.PHONY: create-env install-dev unittests lint build-cpu build-gpu run-local
+.PHONY: create-env install-dev unittests lint local-build run-local

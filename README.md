@@ -23,15 +23,14 @@ each case on my website as I experiment with it:
 - ["Flow_models 2: Generative image modeling"](http://research.ganse.org/datasci/flow_models/flow_models_2.html)
 
 
-### A. Get things set up to run
+## A. Prep/Setup
 
-#### Platform options
+### Platform Options
 To train the models in this repo you have a number of options for platforms:
 1. directly in Python (local in python virtural environment, no Docker)
-2. locally in Docker (CPU, for smoke-testing the container or running application 1)
-3. locally in Docker (GPU, on a GPU-equipped machine or EC2 instance)
-4. cloud training via SageMaker Training Jobs (for full single runs)
-5. cloud training via AWS Batch (for queued/parallel job sweeps)
+2. locally in Docker (on home machine or on a cloud instance, CPU or GPU)
+3. cloud training via SageMaker Training Jobs (for full single runs)
+4. cloud training via AWS Batch (for queued/parallel job sweeps)
 
 Local runs (options 1-3) could either be on an average home machine (eg for
 options 1 or 2 for the lightweight application 1 or tests), or on a GPU-enabled
@@ -44,15 +43,15 @@ AWS services.
 
 For local runs without Docker (option 1), you'll need to create a python virtual
 environment and install the dependencies:
-    ```
-    make create-env             # creates .venvN and pip-installs requirements.txt
-    source .venvN/bin/activate  # enter your desired venv (the N increments with each create-env call)
-    make install-dev            # if you wish to do dev/tests/linting (installs requirements-dev.txt)
-    ```
+```
+make create-env             # creates .venvN and pip-installs requirements.txt
+source .venvN/bin/activate  # enter your desired venv (the N increments with each create-env call)
+make install-dev            # if you wish to do dev/tests/linting (installs requirements-dev.txt)
+```
 This is not needed for Docker or cloud runs — dependencies are baked into the
 Docker image.
 
-#### Training data
+### Training Data
 For training images (for image-based applications like `train_flowmodels2.py`),
 of course you can use whatever images you want.  For my example experimentation
 I used the nicely curated Kaggle dataset
@@ -79,11 +78,12 @@ data/                <-- or s3://mybucket/prefix/
 ```
 
 
-### B. Run the training
+## B. Running the Training
 
-Follow the directions for the respective run option:
+Follow the directions for the respective run option (same numbers as the list
+above in Section A1. Platform Options):
 
-#### Option 1 — directly in Python (local, in python virtual environment, no Docker):
+### 1. directly in Python (local, in python virtual environment, no Docker):
 1. Enter the python environment: `source .venvN/bin/activate`
 2. Optionally set `export TF_CPP_MIN_LOG_LEVEL=2` to reduce TensorFlow log noise.
 3. Edit the parameter dicts near the top of `train_flowmodelsN.py` to set
@@ -92,21 +92,17 @@ Follow the directions for the respective run option:
    in Docker/SageMaker runs, not in this direct-Python mode.)
 4. Run `python train_flowmodelsN.py` (where `N` is 1, 2, etc.).
 
-#### Option 2 — locally in Docker (CPU, for smoke-testing the container):
+### 2. locally in Docker (CPU or GPU):
+(CPU for application 1 or smoke-testing the container; GPU for application 2+
+on a GPU-equipped machine.)
+
 Edit `params/paramsN.json`, then:
 ```bash
-make build-cpu
-make run-local SCRIPT=N DEVICE=cpu
+make local-build DEVICE=cpu         # or DEVICE=gpu
+make run-local SCRIPT=N DEVICE=cpu  # or DEVICE=gpu
 ```
 
-#### Option 3 — locally in Docker (GPU, on a GPU-equipped machine):
-Edit `params/paramsN.json`, then:
-```bash
-make build-gpu
-make run-local SCRIPT=N DEVICE=gpu
-```
-
-#### Option 4 — cloud training via SageMaker Training Jobs (recommended for full runs):
+### 3. cloud training via SageMaker Training Jobs (recommended for full runs):
 Edit `params/paramsN.json`, then:
 ```bash
 make run-build BRANCH=myfeature DEVICE=gpu  # default BRANCH=main, default DEVICE=gpu
@@ -118,7 +114,7 @@ make sm-run SCRIPT=N TAG=mybranch-gpu       # use a specific image tag (of form 
 See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup
 and monitoring details.
 
-#### Option 5 — cloud training via AWS Batch (for queued/parallel job sweeps):
+### 4. cloud training via AWS Batch (for queued/parallel job sweeps):
 Edit the parameter dicts in `train_flowmodelsN.py`, rebuild and push the image
 (`make run-build [BRANCH=main] [DEVICE=gpu]`), then run `make run-batchjob`.
 
@@ -129,7 +125,7 @@ See [`awsbatch-support/README.md`](awsbatch-support/README.md) for full
 setup and submission instructions.
 
 
-#### Reinstantiating model from saved weights
+### Reinstantiating model from saved weights
 If both `model/model_arch.json` and `model/model_weights.weights.h5` are being
 saved (note the latter may not be depending on the value of
 training_params["save_model_weights"] because that weights file can be huge),
@@ -142,9 +138,9 @@ model.load_weights("model/model_weights.weights.h5")
 ```
 
 
-### C. References
+## C. References
 
-#### Papers
+### Papers
 * Distribution mapping and generative image modeling with INNs
   - [RealNVP paper](https://arxiv.org/pdf/1605.08803)
   - [NICE paper](https://arxiv.org/pdf/1410.8516)
@@ -156,7 +152,7 @@ model.load_weights("model/model_weights.weights.h5")
 * TensorFlow Probability components
   - [tfp.bijectors.RealNVP API](https://www.tensorflow.org/probability/api_docs/python/tfp/bijectors/RealNVP)
 
-#### Other notes/etc.
+### Other notes/etc.
 * [A RealNVP tutorial found in Github](https://github.com/MokkeMeguru/glow-realnvp-tutorial/blob/master/tips/RealNVP_mnist_en.ipynb)
 * [Kang ISSP 2020 paper on NICE INNs](https://jaekookang.me/issp2020)
 * [Eric Jang Normalizing Flows Tutorial](https://blog.evjang.com/2018/01/nf2.html)
