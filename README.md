@@ -79,7 +79,9 @@ data/                <-- or s3://mybucket/prefix/
 ## B. Running the Training
 
 Follow the directions for the respective run option (same numbers as the list
-above in section Platform Options):
+above in section Platform Options).  Also note that
+[doc/all_makefile_targets.md](doc/all_makefile_targets.md)
+lists all the makefile targets from top-level, SageMaker, and AWS Batch makefiles.
 
 ### 1. Directly in Python (local, in python virtual environment, no Docker):
 1. Enter the python environment: `source .venvN/bin/activate`
