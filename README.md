@@ -37,7 +37,7 @@ container, could either be on an average home machine or on a GPU-enabled machin
 or EC2 instance.  To do the latter in AWS, for convenience you could follow [these
 instructions](https://github.com/aganse/py_tf2_gpu_dock_mlflow/blob/main/doc/aws_ec2_install.md)
 to quickly configure a GPU-enabled EC2 instance.  For submitted cloud runs (options
-3–4), no EC2 setup is needed - training runs entirely up on independent AWS services.
+3-4), no EC2 setup is needed - training runs entirely up on independent AWS services.
 
 For local runs without Docker (option 1), you'll need to create a python virtual
 environment and install the dependencies:
@@ -57,9 +57,9 @@ I used the nicely curated Kaggle dataset
 contains ~5000 cats, ~5000 dogs, and ~5000 misc wild animals (fox, leopard,
 lion, tiger, wolf, etc).
 
-- for local runs (options 1–2): place images in some directory (e.g. `data/`) and
+- for local runs (options 1-2): place images in some directory (e.g. `data/`) and
   set `IMAGES_PATH` to that path.
-- for cloud runs (options 3–4): upload to S3 and set `IMAGES_PATH=s3://mybucket/prefix`.
+- for cloud runs (options 3-4): upload to S3 and set `IMAGES_PATH=s3://mybucket/prefix`.
 
 Use the following directory structure in `data/` (but note subdirectories are
 merged by the data generator, so `cat` and `beachball` images mix together in
@@ -116,7 +116,7 @@ and monitoring details.
 Edit the parameter dicts in `train_flowmodelsN.py`, rebuild and push the image
 (`make run-build [BRANCH=main] [DEVICE=gpu]`), then run `make run-batchjob`.
 
-(Params-file override support for Batch, equivalent to that in options 2–3, are
+(Params-file override support for Batch, equivalent to that in options 2-3, are
 to be added soon.)
 
 See [`awsbatch-support/README.md`](awsbatch-support/README.md) for full
