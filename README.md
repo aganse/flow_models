@@ -1,10 +1,10 @@
 # flow_models
 
-Normalizing-flow models are invertible neural networks (INNs) — generative
+Normalizing-flow models are invertible neural networks (INNs) - generative
 models that provide exact likelihood computation (unlike GANs and VAEs) by
 ensuring all transformations are invertible with efficiently computable
 Jacobians.  This enables generative image modeling, anomaly detection,
-classification, parameter estimation, and Bayesian inverse problems — all
+classification, parameter estimation, and Bayesian inverse problems - all
 from the same architecture, just with different input/output partitioning.
 INNs allow for such a range of applications - a real Swiss-army-knife of
 the modeling world that I'm recently fascinated with.  <IMG SRC="doc/sak.jpg" ALT="" WIDTH=25>
@@ -32,23 +32,21 @@ To train the models in this repo you have a number of options for platforms:
 3. cloud training via SageMaker Training Jobs (for full single runs)
 4. cloud training via AWS Batch (for queued/parallel job sweeps)
 
-Local runs (options 1-3) could either be on an average home machine (eg for
-options 1 or 2 for the lightweight application 1 or tests), or on a GPU-enabled
-machine or EC2 instance (for options 1 or 3 for application 2 and up).  For the
-latter (options 1 or 3 on GPU) in AWS, you could follow [these
+Local runs (options 1-2), whether in a Python virtual environment or in a Docker
+container, could either be on an average home machine or on a GPU-enabled machine
+or EC2 instance.  To do the latter in AWS, for convenience you could follow [these
 instructions](https://github.com/aganse/py_tf2_gpu_dock_mlflow/blob/main/doc/aws_ec2_install.md)
-to configure a GPU-enabled EC2 instance.  For submitted cloud runs (Options
-4–5), no local GPU or EC2 setup is needed — training runs entirely on separate
-AWS services.
+to quickly configure a GPU-enabled EC2 instance.  For submitted cloud runs (options
+3–4), no EC2 setup is needed - training runs entirely up on independent AWS services.
 
 For local runs without Docker (option 1), you'll need to create a python virtual
 environment and install the dependencies:
 ```
 make create-env             # creates .venvN and pip-installs requirements.txt
-source .venvN/bin/activate  # enter your desired venv (the N increments with each create-env call)
-make install-dev            # if you wish to do dev/tests/linting (installs requirements-dev.txt)
+source .venvN/bin/activate  # enter desired venv (N increments with each create-env call)
+make install-dev            # if wish to do dev/tests/linting (installs requirements-dev.txt)
 ```
-This is not needed for Docker or cloud runs — dependencies are baked into the
+That is not needed for Docker or cloud runs - dependencies are baked into the
 Docker image.
 
 ### Training Data
@@ -59,9 +57,9 @@ I used the nicely curated Kaggle dataset
 contains ~5000 cats, ~5000 dogs, and ~5000 misc wild animals (fox, leopard,
 lion, tiger, wolf, etc).
 
-- for local runs (options 1–3): place images in some directory (e.g. `data/`) and
+- for local runs (options 1–2): place images in some directory (e.g. `data/`) and
   set `IMAGES_PATH` to that path.
-- for cloud runs (options 4–5): upload to S3 and set `IMAGES_PATH=s3://mybucket/prefix`.
+- for cloud runs (options 3–4): upload to S3 and set `IMAGES_PATH=s3://mybucket/prefix`.
 
 Use the following directory structure in `data/` (but note subdirectories are
 merged by the data generator, so `cat` and `beachball` images mix together in
@@ -81,9 +79,9 @@ data/                <-- or s3://mybucket/prefix/
 ## B. Running the Training
 
 Follow the directions for the respective run option (same numbers as the list
-above in Section A1. Platform Options):
+above in section Platform Options):
 
-### 1. directly in Python (local, in python virtual environment, no Docker):
+### 1. Directly in Python (local, in python virtual environment, no Docker):
 1. Enter the python environment: `source .venvN/bin/activate`
 2. Optionally set `export TF_CPP_MIN_LOG_LEVEL=2` to reduce TensorFlow log noise.
 3. Edit the parameter dicts near the top of `train_flowmodelsN.py` to set
@@ -92,17 +90,17 @@ above in Section A1. Platform Options):
    in Docker/SageMaker runs, not in this direct-Python mode.)
 4. Run `python train_flowmodelsN.py` (where `N` is 1, 2, etc.).
 
-### 2. locally in Docker (CPU or GPU):
+### 2. Locally in Docker (CPU or GPU):
 (CPU for application 1 or smoke-testing the container; GPU for application 2+
 on a GPU-equipped machine.)
 
 Edit `params/paramsN.json`, then:
 ```bash
-make local-build DEVICE=cpu         # or DEVICE=gpu
-make run-local SCRIPT=N DEVICE=cpu  # or DEVICE=gpu
+make local-build DEVICE=cpu         # or =gpu  / note build can take a long time locally
+make run-local SCRIPT=N DEVICE=cpu  # or =gpu / (esp for GPU) if it even completes at all
 ```
 
-### 3. cloud training via SageMaker Training Jobs (recommended for full runs):
+### 3. Cloud training via SageMaker Training Jobs (recommended for full single runs):
 Edit `params/paramsN.json`, then:
 ```bash
 make run-build BRANCH=myfeature DEVICE=gpu  # default BRANCH=main, default DEVICE=gpu
@@ -114,12 +112,12 @@ make sm-run SCRIPT=N TAG=mybranch-gpu       # use a specific image tag (of form 
 See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup
 and monitoring details.
 
-### 4. cloud training via AWS Batch (for queued/parallel job sweeps):
+### 4. Cloud training via AWS Batch (for queued/parallel job sweeps):
 Edit the parameter dicts in `train_flowmodelsN.py`, rebuild and push the image
 (`make run-build [BRANCH=main] [DEVICE=gpu]`), then run `make run-batchjob`.
 
-(Params-file override support for Batch, equivalent to Options 2–4, will be
-added soon.)
+(Params-file override support for Batch, equivalent to that in options 2–3, are
+to be added soon.)
 
 See [`awsbatch-support/README.md`](awsbatch-support/README.md) for full
 setup and submission instructions.
