@@ -85,6 +85,7 @@ lists all the makefile targets from top-level, SageMaker, and AWS Batch makefile
 
 <details>
 <summary>1. Directly in Python (local, in python virtual environment, no Docker)</summary>
+
 1. Enter the python environment: `source .venvN/bin/activate`
 2. Set environment variables for settings that shouldn't be in the repo:
    a. IMAGES_PATH: training data images location, required for train_flowmodels2.py
@@ -105,6 +106,7 @@ lists all the makefile targets from top-level, SageMaker, and AWS Batch makefile
 
 <details>
 <summary>2. Locally in Docker (CPU or GPU)</summary>
+
 (CPU for application 1 or smoke-testing the container; GPU for application 2+
 on a GPU-equipped machine.)  Note `make local-build` here uses your local
 working directory as the build context.  It COPYs whatever .py files exist on
@@ -136,6 +138,7 @@ option is testing.
 
 <details>
 <summary>3. Cloud training via SageMaker Training Jobs (recommended for full single runs)</summary>
+
 Note `make run-build` here triggers AWS CodeBuild with `--source-version BRANCH`,
 which pulls from **GitHub** at that branch to build the Docker image in AWS.  Code
 must be pushed to GitHub to be picked up.  No EC2 setup needed — training runs
@@ -168,6 +171,7 @@ and monitoring details.
 
 <details>
 <summary>4. Cloud training via AWS Batch (for queued/parallel job sweeps)</summary>
+
 Like option 3, `make run-build` pulls from GitHub so code must be pushed first.
 AWS Batch requires more one-time infrastructure setup than SageMaker — see
 [`awsbatch-support/README.md`](awsbatch-support/README.md) for the full one-time
