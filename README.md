@@ -84,7 +84,7 @@ above in section Platform Options, click to open that section).  Also note that
 lists all the makefile targets from top-level, SageMaker, and AWS Batch makefiles.
 
 <details>
-<summary>**1. Directly in Python (local, in python virtual environment, no Docker)**</summary>
+<summary><h3>1. Directly in Python (local, in python virtual environment, no Docker)</h3></summary>
 
 1. Enter the python environment: `source .venvN/bin/activate`
 2. Set environment variables for settings that shouldn't be in the repo:
@@ -105,7 +105,7 @@ lists all the makefile targets from top-level, SageMaker, and AWS Batch makefile
 </details>
 
 <details>
-<summary>**2. Locally in Docker (CPU or GPU)**</summary>
+<summary><h3>2. Locally in Docker (CPU or GPU)</h3></summary>
 
 (CPU for application 1 or smoke-testing the container; GPU for application 2+
 on a GPU-equipped machine.)  Note `make local-build` here uses your local
@@ -137,7 +137,7 @@ option is testing.
 </details>
 
 <details>
-<summary>**3. Cloud training via SageMaker Training Jobs (recommended for full single runs)**</summary>
+<summary><h3>3. Cloud training via SageMaker Training Jobs (recommended for full single runs)</h3></summary>
 
 Note `make run-build` here triggers AWS CodeBuild with `--source-version BRANCH`,
 which pulls from **GitHub** at that branch to build the Docker image in AWS.  Code
@@ -170,7 +170,7 @@ and monitoring details.
 </details>
 
 <details>
-<summary>**4. Cloud training via AWS Batch (for queued/parallel job sweeps)**</summary>
+<summary><h3>4. Cloud training via AWS Batch (for queued/parallel job sweeps)</h3></summary>
 
 Like option 3, `make run-build` pulls from GitHub so code must be pushed first.
 AWS Batch requires more one-time infrastructure setup than SageMaker — see
