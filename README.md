@@ -25,7 +25,7 @@ each case on my website as I experiment with it:
 
 ## A. Prep/Setup
 
-### Platform Run Options
+### Platform run options
 To train the models in this repo you have a number of options for platforms,
 with CPU or GPU in all:
 1. locally in a Python venv without Docker (on own machine or cloud instance)
@@ -50,7 +50,7 @@ make install-dev            # if wish to do dev/tests/linting (installs requirem
 Installing that python environment is not needed for Docker or cloud runs -
 dependencies are baked into the Docker image.
 
-### Training Data
+### Training data
 For training images (for image-based applications like `train_flowmodels2.py`),
 of course you can use whatever images you want.  For my example experimentation
 I used the nicely curated Kaggle dataset
@@ -79,11 +79,11 @@ data/                <-- or s3://mybucket/prefix/
 
 ## B. Running the Training
 
-### Instructions per run option
+### Instructions for each platform run option
 
 Follow the directions for the respective run option (same numbers as the list
-above in section Platform Options, click to open that section).  Also note that
-[doc/all_makefile_targets.md](doc/all_makefile_targets.md)
+above in section Platform Options, click to open each section below).  Also note
+that [doc/all_makefile_targets.md](doc/all_makefile_targets.md)
 lists all the makefile targets from top-level, SageMaker, and AWS Batch makefiles.
 
 <details>
@@ -106,7 +106,7 @@ lists all the makefile targets from top-level, SageMaker, and AWS Batch makefile
    in the Docker image based runs, those are NOT USED in this direct-Python mode.)
 4. Run `python train_flowmodelsN.py` (where `N` is 1, 2, etc.).
 </details>
-<!-- ─────────────────────────────── -->
+
 <details>
 <summary><h4>2. Locally in Docker (CPU or GPU)</h4></summary>
 
@@ -138,7 +138,7 @@ option is testing.
     make run-local SCRIPT=N DEVICE=cpu  # or =gpu / (esp for GPU) if it even completes at all
     ```
 </details>
-<!-- ─────────────────────────────── -->
+
 <details>
 <summary><h4>3. Cloud training via SageMaker Training Jobs (recommended for full single runs)</h4></summary>
 
@@ -171,7 +171,7 @@ entirely on independent AWS services.
 See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup
 and monitoring details.
 </details>
-<!-- ─────────────────────────────── -->
+
 <details>
 <summary><h4>4. Cloud training via AWS Batch (for queued/parallel job sweeps)</h4></summary>
 
@@ -208,7 +208,7 @@ and submission instructions.
 </details>
 
 
-### Reinstantiating model from saved weights
+### Reinstantiating a model from saved weights
 If both `model/model_arch.json` and `model/model_weights.weights.h5` are being
 saved (note the latter may not be depending on the value of
 training_params["save_model_weights"], false by default because the weights
