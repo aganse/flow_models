@@ -23,9 +23,8 @@ each case on my website as I experiment with it:
 - ["Flow_models 2: Generative image modeling"](http://research.ganse.org/datasci/flow_models/flow_models_2.html)
 
 
-## A. Prep/Setup
+## Running the Training
 
-### Platform run options
 To train the models in this repo you have a number of options for platforms,
 with CPU or GPU in all:
 1. locally in a Python venv without Docker (on own machine or cloud instance)
@@ -33,30 +32,22 @@ with CPU or GPU in all:
 3. cloud training via SageMaker Training Jobs (for full single runs)
 4. cloud training via AWS Batch (for queued/parallel job sweeps)
 
-Local runs (options 1-2), whether in a Python virtual environment or in a Docker
-container, could either be on an average home machine or on a GPU-enabled machine
-or EC2 instance.  To do the latter in AWS, for convenience you could follow [these
-instructions](https://github.com/aganse/py_tf2_gpu_dock_mlflow/blob/main/doc/aws_ec2_install.md)
-to quickly configure a GPU-enabled EC2 instance.  For submitted cloud runs (options
-3-4), no EC2 setup is needed - training runs entirely up on independent AWS services.
+Local runs (options 1-2) can be on an average home machine or a GPU-enabled
+machine or EC2 instance.  To configure a GPU-enabled EC2 instance in AWS,
+follow [these instructions](https://github.com/aganse/py_tf2_gpu_dock_mlflow/blob/main/doc/aws_ec2_install.md).
+For cloud runs (options 3-4), no EC2 setup is needed — training runs entirely
+on independent AWS services.
 
-For local runs without Docker (option 1), you'll need to create a python virtual
-environment and install the dependencies:
-```
-make create-env             # creates .venvN and pip-installs requirements.txt
-source .venvN/bin/activate  # enter desired venv (N increments with each create-env call)
-make install-dev            # if wish to do dev/tests/linting (installs requirements-dev.txt)
-```
-Installing that python environment is not needed for Docker or cloud runs -
-dependencies are baked into the Docker image.
+Also note that [doc/all_makefile_targets.md](doc/all_makefile_targets.md)
+lists all makefile targets from the top-level, SageMaker, and AWS Batch makefiles.
 
 ### Training data
-For training images (for image-based applications like `train_flowmodels2.py`),
-of course you can use whatever images you want.  For my example experimentation
-I used the nicely curated Kaggle dataset
+
+**Required before running image-based scripts** (`train_flowmodels2.py`, etc.):
+For my example experimentation I used the nicely curated Kaggle dataset
 [animal-faces](https://www.kaggle.com/datasets/andrewmvd/animal-faces) which
 contains ~5000 cats, ~5000 dogs, and ~5000 misc wild animals (fox, leopard,
-lion, tiger, wolf, etc).
+lion, tiger, wolf, etc), but of course you can use whatever images you want.
 
 - for local runs (options 1-2): place images in some directory (e.g. `data/`) and
   set `IMAGES_PATH` to that path.
@@ -76,20 +67,19 @@ data/                <-- or s3://mybucket/prefix/
         cat/         <-- these don't
 ```
 
+### Instructions for each platform option
 
-## B. Running the Training
-
-### Instructions for each platform run option
-
-Follow the directions for the respective run option (same numbers as the list
-above in section Platform Options, click to open each section below).  Also note
-that [doc/all_makefile_targets.md](doc/all_makefile_targets.md)
-lists all the makefile targets from top-level, SageMaker, and AWS Batch makefiles.
+Click to expand your chosen run option:
 
 <details>
 <summary><h4>1. Directly in Python (local, in python virtual environment, no Docker)</h4></summary>
 
-1. Enter the python environment: `source .venvN/bin/activate`
+1. Create and enter the python virtual environment:
+   ```
+   make create-env             # creates .venvN and pip-installs requirements.txt
+   source .venvN/bin/activate  # enter desired venv (N increments with each create-env call)
+   make install-dev            # optional: installs dev/test/linting tools (requirements-dev.txt)
+   ```
 2. Set environment variables for settings that shouldn't be in the repo:
    - `IMAGES_PATH`: training data images location, required for train_flowmodels2.py
      but not for train_flowmodels1.py (non-image model); can be local path or S3 URI.
@@ -106,9 +96,9 @@ lists all the makefile targets from top-level, SageMaker, and AWS Batch makefile
    in the Docker image based runs, those are NOT USED in this direct-Python mode.)
 4. Run `python train_flowmodelsN.py` (where `N` is 1, 2, etc.).
 </details>
-
+<!-- ─────────────────────────────────────────────────────────────── -->
 <details>
-<summary><h4>2. Locally in Docker (CPU or GPU)</h4></summary>
+<summary><h4>2. Locally in Docker (CPU or GPU, home machine or EC2 instance)</h4></summary>
 
 (CPU for application 1 or smoke-testing the container; GPU for application 2+
 on a GPU-equipped machine.)  Note `make local-build` here uses your local
@@ -138,7 +128,7 @@ option is testing.
     make run-local SCRIPT=N DEVICE=cpu  # or =gpu / (esp for GPU) if it even completes at all
     ```
 </details>
-
+<!-- ─────────────────────────────────────────────────────────────── -->
 <details>
 <summary><h4>3. Cloud training via SageMaker Training Jobs (recommended for full single runs)</h4></summary>
 
@@ -171,7 +161,7 @@ entirely on independent AWS services.
 See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup
 and monitoring details.
 </details>
-
+<!-- ─────────────────────────────────────────────────────────────── -->
 <details>
 <summary><h4>4. Cloud training via AWS Batch (for queued/parallel job sweeps)</h4></summary>
 
@@ -221,7 +211,7 @@ model.load_weights("model/model_weights.weights.h5")
 ```
 
 
-## C. References
+## References
 
 ### Papers
 * Distribution mapping and generative image modeling with INNs
