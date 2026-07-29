@@ -25,8 +25,9 @@ each case on my website as I experiment with it:
 
 ## A. Prep/Setup
 
-### Platform Options
-To train the models in this repo you have a number of options for platforms, CPU or GPU in all:
+### Platform Run Options
+To train the models in this repo you have a number of options for platforms,
+with CPU or GPU in all:
 1. locally in a Python venv without Docker (on own machine or cloud instance)
 2. locally in a Docker container (on own machine or cloud instance)
 3. cloud training via SageMaker Training Jobs (for full single runs)
@@ -78,6 +79,8 @@ data/                <-- or s3://mybucket/prefix/
 
 ## B. Running the Training
 
+### Instructions per run option
+
 Follow the directions for the respective run option (same numbers as the list
 above in section Platform Options, click to open that section).  Also note that
 [doc/all_makefile_targets.md](doc/all_makefile_targets.md)
@@ -103,7 +106,7 @@ lists all the makefile targets from top-level, SageMaker, and AWS Batch makefile
    in the Docker image based runs, those are NOT USED in this direct-Python mode.)
 4. Run `python train_flowmodelsN.py` (where `N` is 1, 2, etc.).
 </details>
-
+<!-- ─────────────────────────────── -->
 <details>
 <summary><h4>2. Locally in Docker (CPU or GPU)</h4></summary>
 
@@ -135,7 +138,7 @@ option is testing.
     make run-local SCRIPT=N DEVICE=cpu  # or =gpu / (esp for GPU) if it even completes at all
     ```
 </details>
-
+<!-- ─────────────────────────────── -->
 <details>
 <summary><h4>3. Cloud training via SageMaker Training Jobs (recommended for full single runs)</h4></summary>
 
@@ -168,7 +171,7 @@ entirely on independent AWS services.
 See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup
 and monitoring details.
 </details>
-
+<!-- ─────────────────────────────── -->
 <details>
 <summary><h4>4. Cloud training via AWS Batch (for queued/parallel job sweeps)</h4></summary>
 
