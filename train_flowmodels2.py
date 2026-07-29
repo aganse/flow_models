@@ -1,3 +1,9 @@
+"""For slightly older verisons of TF, there are many GPU warnings that can spew
+verbosely during runs which gets really annoying; in that case can set
+TF_CPP_MIN_LOG_LEVEL=2.  But just leaving this in a comment since with latest
+versions that isn't really a concern anymore.
+"""
+
 import os
 from pathlib import Path
 

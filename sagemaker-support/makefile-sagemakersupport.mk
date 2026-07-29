@@ -66,6 +66,31 @@ ifndef SCRIPT
 	@echo
 	@exit 1
 endif
+ifndef MLFLOW_TRACKING_URI
+	$(error MLFLOW_TRACKING_URI is not set. You must export it before running make run-local)
+endif
+ifneq ($(SCRIPT),1)
+  ifeq ($(filter s3://%,$(IMAGES_PATH)),)
+        $(error IMAGES_PATH must be an s3:// URI for SCRIPT=$(SCRIPT) SageMaker runs with images)
+  endif
+endif
+ifneq ($(WEIGHTS_PATH),)
+	ifeq ($(filter s3://%,$(WEIGHTS_PATH)),)
+	      $(error WEIGHTS_PATH must be an s3:// URI for SageMaker runs if set, got: '$(WEIGHTS_PATH)')
+	endif
+endif
+ifndef AWS_ACCT_ID
+	$(error AWS_ACCT_ID is not set. Export it before running sm-run)
+endif
+ifndef AWS_REGION
+	$(error AWS_REGION is not set. Export it before running sm-run)
+endif
+ifndef SM_SUBNET
+	$(error SM_SUBNET is not set. Export it before running sm-run)
+endif
+ifndef SM_SG
+	$(error SM_SG is not set. Export it before running sm-run)
+endif
 	$(eval JOB_NAME := $(SM_JOB_PREFIX)$(SCRIPT)-$(shell date +%Y%m%d-%H%M%S))
 	$(eval PARAMS_BLOB := $(shell base64 -i params/params$(SCRIPT).json 2>/dev/null || base64 params/params$(SCRIPT).json | tr -d '\n'))
 	@aws sagemaker create-training-job \

@@ -1,6 +1,11 @@
-# Note: environment variables AWS_ACCT_ID, AWS_REGION, MLFLOW_TRACKING_URI,
-# and IMAGES_PATH are expected to exist in the environment before calling
-# these makefile macros.
+# Note: environment variables expected to exist in the environment before
+# calling these makefile macros (see guards in each target below):
+#   AWS_ACCT_ID       - AWS account ID
+#   AWS_REGION        - AWS region (e.g. us-west-2)
+#   AWSBATCH_SUBNET   - VPC subnet ID for Batch compute (create-compute-env)
+#   AWSBATCH_SG       - Security group ID for Batch compute (create-compute-env)
+#   MLFLOW_TRACKING_URI - MLflow server URI (register-job-definition)
+#   IMAGES_PATH       - S3 URI of training images (register-job-definition, optional for train1)
 #
 # Note: several variables are purposely exported to the environment (to be
 # env vars) because they are passed to envsubst to substitute into a file.
@@ -112,6 +117,12 @@ run-build:
 	#   make run-build                          # main+gpu -> :main-gpu and :latest
 	#   make run-build BRANCH=myfeature         # myfeature+gpu -> :myfeature-gpu only
 	#   make run-build BRANCH=myfeature DEVICE=cpu  # -> :myfeature-cpu only
+ifndef AWS_ACCT_ID
+	$(error AWS_ACCT_ID is not set. Export it before running run-build)
+endif
+ifndef AWS_REGION
+	$(error AWS_REGION is not set. Export it before running run-build)
+endif
 	$(eval BUILD_ID := $(shell aws codebuild start-build --project-name ${CODEBUILD_PROJ} \
 	  --source-version $(BRANCH) \
 	  --environment-variables-override \
@@ -169,6 +180,12 @@ endif
 create-compute-env:
 	# Create batch compute environment - g4dn.xlarge have 4 vCpus so pinning vCpus to 4.
 	# (occasional run - for each set of batch runs)
+ifndef AWSBATCH_SUBNET
+	$(error AWSBATCH_SUBNET is not set. Export it before running create-compute-env)
+endif
+ifndef AWSBATCH_SG
+	$(error AWSBATCH_SG is not set. Export it before running create-compute-env)
+endif
 	@aws batch create-compute-environment --compute-environment-name ${COMPUTE_ENV_NAME} --type MANAGED \
 		--compute-resources instanceTypes=g4dn.xlarge,minvCpus=0,desiredvCpus=0,maxvCpus=4,${EXTRA_ARGS} \
 		--service-role "" --no-cli-pager
@@ -195,6 +212,15 @@ register-job-definition:
 	# The aws command requires an ECR_REPO_URI in this json file which varies
 	# per user, so before submitting json file, we substitute in the $ECR_REPO_URI
 	# environment variable below:
+ifndef AWS_ACCT_ID
+	$(error AWS_ACCT_ID is not set. Export it before running register-job-definition)
+endif
+ifndef AWS_REGION
+	$(error AWS_REGION is not set. Export it before running register-job-definition)
+endif
+ifndef MLFLOW_TRACKING_URI
+	$(error MLFLOW_TRACKING_URI is not set. Export it before running register-job-definition)
+endif
 	@envsubst < awsbatch-support/job_definition_template.json > /tmp/job-definition.json \
 	&& aws batch register-job-definition --cli-input-json file:///tmp/job-definition.json --no-cli-pager
 	rm /tmp/job-definition.json

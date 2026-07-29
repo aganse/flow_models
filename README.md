@@ -79,70 +79,133 @@ data/                <-- or s3://mybucket/prefix/
 ## B. Running the Training
 
 Follow the directions for the respective run option (same numbers as the list
-above in section Platform Options).  Also note that
+above in section Platform Options, click to open that section).  Also note that
 [doc/all_makefile_targets.md](doc/all_makefile_targets.md)
 lists all the makefile targets from top-level, SageMaker, and AWS Batch makefiles.
 
-### 1. Directly in Python (local, in python virtual environment, no Docker):
+<details>
+<summary>1. Directly in Python (local, in python virtual environment, no Docker)</summary>
 1. Enter the python environment: `source .venvN/bin/activate`
-2. Optionally set `export TF_CPP_MIN_LOG_LEVEL=2` to reduce TensorFlow log noise.
+2. Set environment variables for settings that shouldn't be in the repo:
+   a. IMAGES_PATH: training data images location, required for train_flowmodels2.py
+      but not for train_flowmodels1.py (non-image model); can be local path or S3 URI.
+   b. WEIGHTS_PATH: location to save final and checkpointed model weights when
+      "training_params":"save_model_weights" is true; optional.
+   c. AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION if either
+      IMAGES_PATH or WEIGHTS_PATH is an S3 URI.  (Alternately `~/.aws` credentials
+      are used automatically by boto3 if available.)
+   d. MLFLOW_TRACKING_URI: the MLflow tracking server address (if MLflow is used),
+      which for these test runs might often be `http://localhost:5000`.
 3. Edit the parameter dicts near the top of `train_flowmodelsN.py` to set
    desired hyperparameters. Refer to [`doc/config.md`](doc/config.md) for a
    description of every parameter. (Note: `params/paramsN.json` is only read
-   in the Docker image based runs, those are NOT USED in this direct-Python mode.
+   in the Docker image based runs, those are NOT USED in this direct-Python mode.)
 4. Run `python train_flowmodelsN.py` (where `N` is 1, 2, etc.).
+</details>
 
-### 2. Locally in Docker (CPU or GPU):
+<details>
+<summary>2. Locally in Docker (CPU or GPU)</summary>
 (CPU for application 1 or smoke-testing the container; GPU for application 2+
 on a GPU-equipped machine.)  Note `make local-build` here uses your local
 working directory as the build context.  It COPYs whatever .py files exist on
-disk right now, including uncommitted changes.
+disk right now, including uncommitted changes, because the main purpose of this
+option is testing.
+1. Set environment variables for settings that shouldn't be in the repo:
+   a. IMAGES_PATH: training data images location, required for train_flowmodels2.py
+      but not for train_flowmodels1.py (non-image model); can be local path or S3 URI.
+   b. WEIGHTS_PATH: location to save final and checkpointed model weights when
+      "training_params":"save_model_weights" is true; optional.
+   c. AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION if either
+      IMAGES_PATH or WEIGHTS_PATH is an S3 URI.  (Alternately note ~/.aws is
+      mapped into the container if it exists.)
+   d. MLFLOW_TRACKING_URI: the MLflow tracking server address (if MLflow is used)
+      as seen from INSIDE the flow_models Docker container, using the default
+      Docker bridge gateway IP, by numeric IP not hostname, as MLflow now
+      requires allowList settings for hostnames:
+      `export MLFLOW_TRACKING_URI=http://192.168.65.254:5000` (local macOS, i.e.
+      host.docker.internal) or
+      `export MLFLOW_TRACKING_URI=http://172.17.0.1:5000` (local linux)
+2. Edit `params/paramsN.json` to set the desired hyperparameters. Refer to
+   [`doc/config.md`](doc/config.md) for a description of every parameter.
+3. Run:
+    ```bash
+    make local-build DEVICE=cpu         # or =gpu  / note build can take a long time locally
+    make run-local SCRIPT=N DEVICE=cpu  # or =gpu / (esp for GPU) if it even completes at all
+    ```
+</details>
 
-Edit `params/paramsN.json`, then:
-```bash
-# First set the MLFLOW address that will be used INSIDE the flow_models
-# container, using the default Docker bridge gateway IP, by numeric IP not
-# hostname, as MLflow now requires allowList settings for hostnames:
-export MLFLOW_TRACKING_URI=http://192.168.65.254:5000  # macOS (host.docker.internal)
-# or
-# export MLFLOW_TRACKING_URI=http://172.17.0.1:5000  # linux
-#
-make local-build DEVICE=cpu         # or =gpu  / note build can take a long time locally
-make run-local SCRIPT=N DEVICE=cpu  # or =gpu / (esp for GPU) if it even completes at all
-```
-
-### 3. Cloud training via SageMaker Training Jobs (recommended for full single runs):
-Note `make run-build` here triggers AWS CodeBuild with `--source-version
-myfeature`, which pulls from GitHub at that branch.  So that code must be pushed
-to GitHub to be picked up.
-
-Edit `params/paramsN.json`, then:
-```bash
-make run-build BRANCH=myfeature DEVICE=gpu  # default BRANCH=main, default DEVICE=gpu
-                                            # (also note build-status and build-logs targets)
-make sm-run SCRIPT=N                        # uses :latest (by default points to main-gpu image)
-make sm-run SCRIPT=N TAG=mybranch-gpu       # use a specific image tag (of form gitbranch-device)
-                                            # (also note sm-list-jobs, sm-status, sm-logs targets)
-```
+<details>
+<summary>3. Cloud training via SageMaker Training Jobs (recommended for full single runs)</summary>
+Note `make run-build` here triggers AWS CodeBuild with `--source-version BRANCH`,
+which pulls from **GitHub** at that branch to build the Docker image in AWS.  Code
+must be pushed to GitHub to be picked up.  No EC2 setup needed — training runs
+entirely on independent AWS services.
+1. Set environment variables for settings that shouldn't be in the repo:
+   a. AWS_ACCT_ID: your AWS account ID (12-digit number).
+   b. AWS_REGION: AWS region for all resources (e.g. `us-west-2`).
+   c. SM_SUBNET: VPC subnet ID for SageMaker compute instances.
+   d. SM_SG: security group ID for SageMaker compute instances.
+   e. IMAGES_PATH: S3 URI of training data, required for train_flowmodels2.py
+      but not for train_flowmodels1.py (non-image model).
+   f. WEIGHTS_PATH: S3 URI for saving final and checkpointed model weights when
+      "training_params":"save_model_weights" is true; optional.
+   g. MLFLOW_TRACKING_URI: MLflow tracking server address accessible from within
+      your AWS VPC (e.g. `http://10.0.1.50:5000`).
+2. One-time only: create the SageMaker execution IAM role: `make sm-create-role`
+3. Edit `params/paramsN.json` to set the desired hyperparameters. Refer to
+   [`doc/config.md`](doc/config.md) for a description of every parameter.
+4. Run:
+    ```bash
+    make run-build BRANCH=myfeature DEVICE=gpu  # default BRANCH=main, default DEVICE=gpu
+                                                # (also note build-status and build-logs)
+    make sm-run SCRIPT=N                        # uses :latest (points to main-gpu image)
+    make sm-run SCRIPT=N TAG=mybranch-gpu       # use a specific image tag
+                                                # (also note sm-list-jobs, sm-status, sm-logs)
+    ```
 See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup
 and monitoring details.
+</details>
 
-### 4. Cloud training via AWS Batch (for queued/parallel job sweeps):
-Edit the parameter dicts in `train_flowmodelsN.py`, rebuild and push the image
-(`make run-build [BRANCH=main] [DEVICE=gpu]`), then run `make run-batchjob`.
-
-(Params-file override support for Batch, equivalent to that in options 2-3, are
-to be added soon.)
-
-See [`awsbatch-support/README.md`](awsbatch-support/README.md) for full
-setup and submission instructions.
+<details>
+<summary>4. Cloud training via AWS Batch (for queued/parallel job sweeps)</summary>
+Like option 3, `make run-build` pulls from GitHub so code must be pushed first.
+AWS Batch requires more one-time infrastructure setup than SageMaker — see
+[`awsbatch-support/README.md`](awsbatch-support/README.md) for the full one-time
+setup steps before running jobs for the first time.
+1. Set environment variables for settings that shouldn't be in the repo:
+   a. AWS_ACCT_ID: your AWS account ID (12-digit number).
+   b. AWS_REGION: AWS region for all resources (e.g. `us-west-2`).
+   c. AWSBATCH_SUBNET: VPC subnet ID for Batch compute instances.
+   d. AWSBATCH_SG: security group ID for Batch compute instances.
+   e. IMAGES_PATH: S3 URI of training data, required for train_flowmodels2.py
+      but not for train_flowmodels1.py (non-image model).
+   f. WEIGHTS_PATH: S3 URI for saving final and checkpointed model weights when
+      "training_params":"save_model_weights" is true; optional.
+   g. MLFLOW_TRACKING_URI: MLflow tracking server address accessible from within
+      your AWS VPC (e.g. `http://10.0.1.50:5000`).
+2. Edit the parameter dicts near the top of `train_flowmodelsN.py` to set desired
+   hyperparameters. (Note: `params/paramsN.json` param-file override support for
+   Batch is not yet implemented; parameters are set inline in the script for now.)
+3. Re-run `make register-job-definition` whenever MLFLOW_TRACKING_URI, IMAGES_PATH,
+   or WEIGHTS_PATH change, since these are baked into the job definition at
+   registration time.
+4. Run:
+    ```bash
+    make run-build BRANCH=myfeature DEVICE=gpu  # default BRANCH=main, default DEVICE=gpu
+                                                # (also note build-status and build-logs)
+    make run-batchjob                           # submit job; prints JOBID immediately
+                                                # (also note list-jobs, list-job-status, batch-logs)
+    ```
+See [`awsbatch-support/README.md`](awsbatch-support/README.md) for full setup
+and submission instructions.
+</details>
 
 
 ### Reinstantiating model from saved weights
 If both `model/model_arch.json` and `model/model_weights.weights.h5` are being
 saved (note the latter may not be depending on the value of
-training_params["save_model_weights"] because that weights file can be huge),
-the model object could be reinstantiated via:
+training_params["save_model_weights"], false by default because the weights
+file can be huge), the model object can be reinstantiated via:
 ```
 from tensorflow.keras.models import model_from_json
 with open("model/model_arch.json") as f:
@@ -164,6 +227,7 @@ model.load_weights("model/model_weights.weights.h5")
   - [Zhang & Curtis 2021 JGR paper](https://agupubs.onlinelibrary.wiley.com/doi/pdfdirect/10.1029/2021JB022320)
 * TensorFlow Probability components
   - [tfp.bijectors.RealNVP API](https://www.tensorflow.org/probability/api_docs/python/tfp/bijectors/RealNVP)
+  - [tfp.bijectors.Glow API](https://www.tensorflow.org/probability/api_docs/python/tfp/bijectors/Glow)
 
 ### Other notes/etc.
 * [A RealNVP tutorial found in Github](https://github.com/MokkeMeguru/glow-realnvp-tutorial/blob/master/tips/RealNVP_mnist_en.ipynb)
