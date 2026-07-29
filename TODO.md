@@ -1,6 +1,10 @@
 # Recently-completed and next-up tasks for Flow_models
 Not comprehensive long-term tracking here, just keeping organized in current work...
 
+### BUGS
+- [ ] in option 1 (local build) the docker image is named flow_models:{version}-{device}
+      but options 2-4 name the image flow_models:{branch}-{device}. should be the latter.
+
 ### TODO
 - [ ] Run test runs re improving blurry simulated images
   - [ ] Tune Glow training: lower LR ~3e-5, slower decay, higher grad thresh

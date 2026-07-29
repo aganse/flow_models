@@ -584,6 +584,7 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         if mlflow.active_run():
             mlflow.end_run()
         mlflow.start_run(run_name=run_name)
+        mlflow.set_tag("mlflow.user", os.environ.get("HOST_USER", os.environ.get("USER", "unknown")))
         mlflow.set_tag("image_tag", os.environ.get("IMAGE_TAG", "[local]"))
         params_for_logging = {
             **run_params,
@@ -671,6 +672,7 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             if mlflow.active_run():
                 mlflow.end_run()
             mlflow.start_run(run_name=run_name)
+            mlflow.set_tag("mlflow.user", os.environ.get("HOST_USER", os.environ.get("USER", "unknown")))
             params_for_logging = {
                 **run_params,
                 **training_params,
@@ -739,12 +741,16 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
                 else os.path.join(run_params["model_dir"], "checkpoints")
             )
             os.makedirs(_ckpt_dir, exist_ok=True)
+            _steps_per_epoch = (
+                training_params["num_data_input"]
+                // training_params["batch_size"]
+                * training_params["augmentation_factor"]
+            )
             callbacks.append(
                 tf.keras.callbacks.ModelCheckpoint(
                     filepath=os.path.join(_ckpt_dir, "ckpt-{epoch:04d}.weights.h5"),
                     save_weights_only=True,
-                    save_freq="epoch",
-                    period=training_params["checkpoint_every_n_epochs"],
+                    save_freq=training_params["checkpoint_every_n_epochs"] * _steps_per_epoch,
                     verbose=1,
                 )
             )

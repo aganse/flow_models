@@ -64,9 +64,12 @@ endif
 	  -e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
 	  -e IMAGES_PATH=$(IMAGES_PATH) \
 	  -e WEIGHTS_PATH=$(WEIGHTS_PATH) \
+	  -e HOST_USER=$(shell whoami) \
 	  $(DATA_MOUNT) \
 	  -v $(PWD)/params:/opt/ml/input/data/params \
+	  -v /usr/local/mlruns:/usr/local/mlruns \
 	  $(ECR_REPO):$(version)-$(DEVICE)
+	  # --entrypoint /bin/bash \
 
 
 # ensures all entries run every time since these aren't files

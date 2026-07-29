@@ -68,11 +68,11 @@ def main():
         "validate_args": False,
     }
     utils.load_param_overrides(run_params, training_params, model_arch_params)
+    os.makedirs(run_params["output_dir"], exist_ok=True)
+    os.makedirs(run_params["model_dir"], exist_ok=True)
     # List the param settings:
     print("")
     utils.print_run_params(**run_params, **training_params, **model_arch_params)
-    os.makedirs(run_params["output_dir"], exist_ok=True)
-    os.makedirs(run_params["model_dir"], exist_ok=True)
 
     # Get the data
     # ------------

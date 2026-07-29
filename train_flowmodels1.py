@@ -25,7 +25,7 @@ def main():
         "num_outliers_to_highlight": 10,  # set >0 to highlight lowest-density latent points
     }
     training_params = {
-        "num_epochs": 50,
+        "num_epochs": 3,
         "batch_size": 128,
         "reg_level": 1e-5,  # 0.01  # regularization level for the L2 reg in realNVP hidden layers
         "learning_rate": 1e-4,  # scaler -> constant learning rate; vector of 3 -> lr schedule
@@ -54,11 +54,11 @@ def main():
         "validate_args": True,
     }
     utils.load_param_overrides(run_params, training_params, model_arch_params)
+    os.makedirs(run_params["output_dir"], exist_ok=True)
+    os.makedirs(run_params["model_dir"], exist_ok=True)
     # List the param settings:
     print("")
     utils.print_run_params(**run_params, **training_params, **model_arch_params)
-    os.makedirs(run_params["output_dir"], exist_ok=True)
-    os.makedirs(run_params["model_dir"], exist_ok=True)
     highlight_count = int(run_params.get("num_outliers_to_highlight", 0) or 0)
 
     # Get the data

@@ -20,7 +20,7 @@
     "jit_compile": true,
     "tracking_tool": "mlflow",
     "tracking_port": 5000,
-    "tracking_expt_name": "flowmodels1",
+    "tracking_expt_name": "flowmodels1_test",
     "save_model_weights": false,
     "checkpoint_every_n_epochs": 5
   },

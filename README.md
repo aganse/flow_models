@@ -26,9 +26,9 @@ each case on my website as I experiment with it:
 ## A. Prep/Setup
 
 ### Platform Options
-To train the models in this repo you have a number of options for platforms:
-1. directly in Python (local in python virtural environment, no Docker)
-2. locally in Docker (on home machine or on a cloud instance, CPU or GPU)
+To train the models in this repo you have a number of options for platforms, CPU or GPU in all:
+1. locally in a Python venv without Docker (on own machine or cloud instance)
+2. locally in a Docker container (on own machine or cloud instance)
 3. cloud training via SageMaker Training Jobs (for full single runs)
 4. cloud training via AWS Batch (for queued/parallel job sweeps)
 
@@ -46,8 +46,8 @@ make create-env             # creates .venvN and pip-installs requirements.txt
 source .venvN/bin/activate  # enter desired venv (N increments with each create-env call)
 make install-dev            # if wish to do dev/tests/linting (installs requirements-dev.txt)
 ```
-That is not needed for Docker or cloud runs - dependencies are baked into the
-Docker image.
+Installing that python environment is not needed for Docker or cloud runs -
+dependencies are baked into the Docker image.
 
 ### Training Data
 For training images (for image-based applications like `train_flowmodels2.py`),
@@ -89,20 +89,33 @@ lists all the makefile targets from top-level, SageMaker, and AWS Batch makefile
 3. Edit the parameter dicts near the top of `train_flowmodelsN.py` to set
    desired hyperparameters. Refer to [`doc/config.md`](doc/config.md) for a
    description of every parameter. (Note: `params/paramsN.json` is only read
-   in Docker/SageMaker runs, not in this direct-Python mode.)
+   in the Docker image based runs, those are NOT USED in this direct-Python mode.
 4. Run `python train_flowmodelsN.py` (where `N` is 1, 2, etc.).
 
 ### 2. Locally in Docker (CPU or GPU):
 (CPU for application 1 or smoke-testing the container; GPU for application 2+
-on a GPU-equipped machine.)
+on a GPU-equipped machine.)  Note `make local-build` here uses your local
+working directory as the build context.  It COPYs whatever .py files exist on
+disk right now, including uncommitted changes.
 
 Edit `params/paramsN.json`, then:
 ```bash
+# First set the MLFLOW address that will be used INSIDE the flow_models
+# container, using the default Docker bridge gateway IP, by numeric IP not
+# hostname, as MLflow now requires allowList settings for hostnames:
+export MLFLOW_TRACKING_URI=http://192.168.65.254:5000  # macOS (host.docker.internal)
+# or
+# export MLFLOW_TRACKING_URI=http://172.17.0.1:5000  # linux
+#
 make local-build DEVICE=cpu         # or =gpu  / note build can take a long time locally
 make run-local SCRIPT=N DEVICE=cpu  # or =gpu / (esp for GPU) if it even completes at all
 ```
 
 ### 3. Cloud training via SageMaker Training Jobs (recommended for full single runs):
+Note `make run-build` here triggers AWS CodeBuild with `--source-version
+myfeature`, which pulls from GitHub at that branch.  So that code must be pushed
+to GitHub to be picked up.
+
 Edit `params/paramsN.json`, then:
 ```bash
 make run-build BRANCH=myfeature DEVICE=gpu  # default BRANCH=main, default DEVICE=gpu
