@@ -69,16 +69,10 @@ endif
 ifndef MLFLOW_TRACKING_URI
 	$(error MLFLOW_TRACKING_URI is not set. You must export it before running make run-local)
 endif
-ifneq ($(SCRIPT),1)
-  ifeq ($(filter s3://%,$(IMAGES_PATH)),)
-        $(error IMAGES_PATH must be an s3:// URI for SCRIPT=$(SCRIPT) SageMaker runs with images)
-  endif
-endif
-ifneq ($(WEIGHTS_PATH),)
-	ifeq ($(filter s3://%,$(WEIGHTS_PATH)),)
-	      $(error WEIGHTS_PATH must be an s3:// URI for SageMaker runs if set, got: '$(WEIGHTS_PATH)')
-	endif
-endif
+	@if [ "$(SCRIPT)" != "1" ] && ! echo "$(IMAGES_PATH)" | grep -q "^s3://"; then \
+	  echo "Error: IMAGES_PATH must be an s3:// URI for SCRIPT=$(SCRIPT) SageMaker runs with images" >&2; exit 1; fi
+	@if [ -n "$(WEIGHTS_PATH)" ] && ! echo "$(WEIGHTS_PATH)" | grep -q "^s3://"; then \
+	  echo "Error: WEIGHTS_PATH must be an s3:// URI if set, got: '$(WEIGHTS_PATH)'" >&2; exit 1; fi
 ifndef AWS_ACCT_ID
 	$(error AWS_ACCT_ID is not set. Export it before running sm-run)
 endif

@@ -176,7 +176,7 @@ def main():
         else:
             print(f"Now regenerating {run_params['num_gen_sims']} outlier images...")
             outliers_images_path = run_params["output_dir"] + "/outlier_image"
-            outlier_pts = utils.generate_imgs_in_batches(
+            outlier_pts = utils.generate_imgs_in_batches(  # noqa: F841
                 flow_model,
                 run_params["num_gen_sims"],
                 mean,
@@ -189,7 +189,7 @@ def main():
             )
             print(f"Now regenerating {run_params['num_gen_sims']} inlier images...")
             inliers_images_path = run_params["output_dir"] + "/inlier_image"
-            inlier_pts = utils.generate_imgs_in_batches(
+            inlier_pts = utils.generate_imgs_in_batches(  # noqa: F841
                 flow_model,
                 run_params["num_gen_sims"],
                 mean,
@@ -202,7 +202,7 @@ def main():
             )
         print(f"Now regenerating {run_params['num_gen_sims']} training images...")
         regen_images_path = run_params["output_dir"] + "/regen_image"
-        regen_pts = utils.generate_imgs_in_batches(
+        regen_pts = utils.generate_imgs_in_batches(  # noqa: F841
             flow_model,
             run_params["num_gen_sims"],
             mean,

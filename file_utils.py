@@ -16,9 +16,6 @@ from tensorflow.keras.preprocessing.image import (
 )
 
 
-s3_paginator = boto3.client("s3").get_paginator("list_objects_v2")
-
-
 def s3keys(
     s3_uri, start_after="", extensions=["png", "jpg"], cycle=False, delimiter="/"
 ):
@@ -60,6 +57,7 @@ def s3keys(
     else:
         raise ValueError("s3_uri should start with s3://...")
     print(f"bucket_name={bucket_name}, prefix={prefix}")
+    s3_paginator = boto3.client("s3").get_paginator("list_objects_v2")
     prefix = prefix.lstrip(delimiter)
     if start_after and not start_after.startswith(
         prefix

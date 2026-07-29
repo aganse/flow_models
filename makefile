@@ -63,8 +63,8 @@ ifeq ($(IMAGES_PATH),)
 endif
 endif
 	$(eval DATA_MOUNT := $(shell \
-	  if echo "$(IMAGES_PATH)" | grep -q "^s3://"; \
-	  then echo ""; \
+	  if [ -z "$(IMAGES_PATH)" ]; then echo ""; \
+	  elif echo "$(IMAGES_PATH)" | grep -q "^s3://"; then echo ""; \
 	  else echo "-v $(IMAGES_PATH):$(IMAGES_PATH)"; \
 	  fi))
 	$(eval AWS_MOUNT := $(shell \

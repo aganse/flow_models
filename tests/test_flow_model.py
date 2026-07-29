@@ -94,6 +94,8 @@ class TestFlowModelRealNVP(unittest.TestCase):
         np.testing.assert_allclose(x.numpy(), x_hat.numpy(), atol=1e-4)
 
     def test_random_permutation_round_trip(self):
+        tf.random.set_seed(42)
+        np.random.seed(42)
         model = FlowModel(
             image_shape=(4, 4, 1),
             bijector="realnvp-based",
