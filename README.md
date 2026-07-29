@@ -84,19 +84,19 @@ above in section Platform Options, click to open that section).  Also note that
 lists all the makefile targets from top-level, SageMaker, and AWS Batch makefiles.
 
 <details>
-<summary>1. Directly in Python (local, in python virtual environment, no Docker)</summary>
+<summary>**1. Directly in Python (local, in python virtual environment, no Docker)**</summary>
 
 1. Enter the python environment: `source .venvN/bin/activate`
 2. Set environment variables for settings that shouldn't be in the repo:
-   a. IMAGES_PATH: training data images location, required for train_flowmodels2.py
-      but not for train_flowmodels1.py (non-image model); can be local path or S3 URI.
-   b. WEIGHTS_PATH: location to save final and checkpointed model weights when
-      "training_params":"save_model_weights" is true; optional.
-   c. AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION if either
-      IMAGES_PATH or WEIGHTS_PATH is an S3 URI.  (Alternately `~/.aws` credentials
-      are used automatically by boto3 if available.)
-   d. MLFLOW_TRACKING_URI: the MLflow tracking server address (if MLflow is used),
-      which for these test runs might often be `http://localhost:5000`.
+   - `IMAGES_PATH`: training data images location, required for train_flowmodels2.py
+     but not for train_flowmodels1.py (non-image model); can be local path or S3 URI.
+   - `WEIGHTS_PATH`: location to save final and checkpointed model weights when
+     "training_params":"save_model_weights" is true; optional.
+   - `AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION` if either
+     `IMAGES_PATH` or `WEIGHTS_PATH` is an S3 URI.  (Alternately `~/.aws` credentials
+     are used automatically by boto3 if available.)
+   - `MLFLOW_TRACKING_URI`: the MLflow tracking server address (if MLflow is used),
+     which for these test runs might often be `http://localhost:5000`.
 3. Edit the parameter dicts near the top of `train_flowmodelsN.py` to set
    desired hyperparameters. Refer to [`doc/config.md`](doc/config.md) for a
    description of every parameter. (Note: `params/paramsN.json` is only read
@@ -105,7 +105,7 @@ lists all the makefile targets from top-level, SageMaker, and AWS Batch makefile
 </details>
 
 <details>
-<summary>2. Locally in Docker (CPU or GPU)</summary>
+<summary>**2. Locally in Docker (CPU or GPU)**</summary>
 
 (CPU for application 1 or smoke-testing the container; GPU for application 2+
 on a GPU-equipped machine.)  Note `make local-build` here uses your local
@@ -113,20 +113,20 @@ working directory as the build context.  It COPYs whatever .py files exist on
 disk right now, including uncommitted changes, because the main purpose of this
 option is testing.
 1. Set environment variables for settings that shouldn't be in the repo:
-   a. IMAGES_PATH: training data images location, required for train_flowmodels2.py
-      but not for train_flowmodels1.py (non-image model); can be local path or S3 URI.
-   b. WEIGHTS_PATH: location to save final and checkpointed model weights when
-      "training_params":"save_model_weights" is true; optional.
-   c. AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION if either
-      IMAGES_PATH or WEIGHTS_PATH is an S3 URI.  (Alternately note ~/.aws is
-      mapped into the container if it exists.)
-   d. MLFLOW_TRACKING_URI: the MLflow tracking server address (if MLflow is used)
-      as seen from INSIDE the flow_models Docker container, using the default
-      Docker bridge gateway IP, by numeric IP not hostname, as MLflow now
-      requires allowList settings for hostnames:
-      `export MLFLOW_TRACKING_URI=http://192.168.65.254:5000` (local macOS, i.e.
-      host.docker.internal) or
-      `export MLFLOW_TRACKING_URI=http://172.17.0.1:5000` (local linux)
+   - `IMAGES_PATH`: training data images location, required for train_flowmodels2.py
+     but not for train_flowmodels1.py (non-image model); can be local path or S3 URI.
+   - `WEIGHTS_PATH`: location to save final and checkpointed model weights when
+     "training_params":"save_model_weights" is true; optional.
+   - `AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION` if either
+     `IMAGES_PATH` or `WEIGHTS_PATH` is an S3 URI.  (Alternately note `~/.aws` is
+     mapped into the container if it exists.)
+   - `MLFLOW_TRACKING_URI`: the MLflow tracking server address (if MLflow is used)
+     as seen from INSIDE the flow_models Docker container, using the default
+     Docker bridge gateway IP, by numeric IP not hostname, as MLflow now
+     requires allowList settings for hostnames:
+     `export MLFLOW_TRACKING_URI=http://192.168.65.254:5000` (local macOS, i.e.
+     host.docker.internal) or
+     `export MLFLOW_TRACKING_URI=http://172.17.0.1:5000` (local linux)
 2. Edit `params/paramsN.json` to set the desired hyperparameters. Refer to
    [`doc/config.md`](doc/config.md) for a description of every parameter.
 3. Run:
@@ -137,23 +137,23 @@ option is testing.
 </details>
 
 <details>
-<summary>3. Cloud training via SageMaker Training Jobs (recommended for full single runs)</summary>
+<summary>**3. Cloud training via SageMaker Training Jobs (recommended for full single runs)**</summary>
 
 Note `make run-build` here triggers AWS CodeBuild with `--source-version BRANCH`,
 which pulls from **GitHub** at that branch to build the Docker image in AWS.  Code
 must be pushed to GitHub to be picked up.  No EC2 setup needed — training runs
 entirely on independent AWS services.
 1. Set environment variables for settings that shouldn't be in the repo:
-   a. AWS_ACCT_ID: your AWS account ID (12-digit number).
-   b. AWS_REGION: AWS region for all resources (e.g. `us-west-2`).
-   c. SM_SUBNET: VPC subnet ID for SageMaker compute instances.
-   d. SM_SG: security group ID for SageMaker compute instances.
-   e. IMAGES_PATH: S3 URI of training data, required for train_flowmodels2.py
-      but not for train_flowmodels1.py (non-image model).
-   f. WEIGHTS_PATH: S3 URI for saving final and checkpointed model weights when
-      "training_params":"save_model_weights" is true; optional.
-   g. MLFLOW_TRACKING_URI: MLflow tracking server address accessible from within
-      your AWS VPC (e.g. `http://10.0.1.50:5000`).
+   - `AWS_ACCT_ID`: your AWS account ID (12-digit number).
+   - `AWS_REGION`: AWS region for all resources (e.g. `us-west-2`).
+   - `SM_SUBNET`: VPC subnet ID for SageMaker compute instances.
+   - `SM_SG`: security group ID for SageMaker compute instances.
+   - `IMAGES_PATH`: S3 URI of training data, required for train_flowmodels2.py
+     but not for train_flowmodels1.py (non-image model).
+   - `WEIGHTS_PATH`: S3 URI for saving final and checkpointed model weights when
+     "training_params":"save_model_weights" is true; optional.
+   - `MLFLOW_TRACKING_URI`: MLflow tracking server address accessible from within
+     your AWS VPC (e.g. `http://10.0.1.50:5000`).
 2. One-time only: create the SageMaker execution IAM role: `make sm-create-role`
 3. Edit `params/paramsN.json` to set the desired hyperparameters. Refer to
    [`doc/config.md`](doc/config.md) for a description of every parameter.
@@ -170,23 +170,23 @@ and monitoring details.
 </details>
 
 <details>
-<summary>4. Cloud training via AWS Batch (for queued/parallel job sweeps)</summary>
+<summary>**4. Cloud training via AWS Batch (for queued/parallel job sweeps)**</summary>
 
 Like option 3, `make run-build` pulls from GitHub so code must be pushed first.
 AWS Batch requires more one-time infrastructure setup than SageMaker — see
 [`awsbatch-support/README.md`](awsbatch-support/README.md) for the full one-time
 setup steps before running jobs for the first time.
 1. Set environment variables for settings that shouldn't be in the repo:
-   a. AWS_ACCT_ID: your AWS account ID (12-digit number).
-   b. AWS_REGION: AWS region for all resources (e.g. `us-west-2`).
-   c. AWSBATCH_SUBNET: VPC subnet ID for Batch compute instances.
-   d. AWSBATCH_SG: security group ID for Batch compute instances.
-   e. IMAGES_PATH: S3 URI of training data, required for train_flowmodels2.py
-      but not for train_flowmodels1.py (non-image model).
-   f. WEIGHTS_PATH: S3 URI for saving final and checkpointed model weights when
-      "training_params":"save_model_weights" is true; optional.
-   g. MLFLOW_TRACKING_URI: MLflow tracking server address accessible from within
-      your AWS VPC (e.g. `http://10.0.1.50:5000`).
+   - `AWS_ACCT_ID`: your AWS account ID (12-digit number).
+   - `AWS_REGION`: AWS region for all resources (e.g. `us-west-2`).
+   - `AWSBATCH_SUBNET`: VPC subnet ID for Batch compute instances.
+   - `AWSBATCH_SG`: security group ID for Batch compute instances.
+   - `IMAGES_PATH`: S3 URI of training data, required for train_flowmodels2.py
+     but not for train_flowmodels1.py (non-image model).
+   - `WEIGHTS_PATH`: S3 URI for saving final and checkpointed model weights when
+     "training_params":"save_model_weights" is true; optional.
+   - `MLFLOW_TRACKING_URI`: MLflow tracking server address accessible from within
+     your AWS VPC (e.g. `http://10.0.1.50:5000`).
 2. Edit the parameter dicts near the top of `train_flowmodelsN.py` to set desired
    hyperparameters. (Note: `params/paramsN.json` param-file override support for
    Batch is not yet implemented; parameters are set inline in the script for now.)
