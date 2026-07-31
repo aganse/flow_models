@@ -62,7 +62,7 @@ The build ID is printed by `make build` immediately after submission.
 ```bash
 make ecr-list-images                      # list all images with tags and push dates
 make ecr-delete-image TAG=mybranch-gpu    # delete an image by tag
-make ecr-retag-image FROM=old TO=new      # rename a tag (adds new, removes old)
+make ecr-tag-image FROM=old TO=new        # tag an image (like docker tag; FROM left intact)
 ```
 
 ## Required environment variables

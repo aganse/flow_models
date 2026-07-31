@@ -136,26 +136,25 @@ endif
 	  --image-ids imageTag=$(TAG) --no-cli-pager
 	@echo "Deleted: $(TAG)"
 
-ecr-retag-image:
-	# Rename an ECR image tag (adds new tag, removes old).
-	# Usage: make ecr-retag-image FROM=old-tag TO=new-tag
+ecr-tag-image:
+	# Tag an ECR image — equivalent to `docker tag FROM TO`.
+	# ECR atomically moves TO if it already exists on another image.
+	# FROM tag is left intact.  Usage: make ecr-tag-image FROM=src-tag TO=dst-tag
 ifndef FROM
-	@echo "Usage: make ecr-retag-image FROM=old-tag TO=new-tag"
+	@echo "Usage: make ecr-tag-image FROM=src-tag TO=dst-tag"
 	@exit 1
 endif
 ifndef TO
-	@echo "Usage: make ecr-retag-image FROM=old-tag TO=new-tag"
+	@echo "Usage: make ecr-tag-image FROM=src-tag TO=dst-tag"
 	@exit 1
 endif
 	@MANIFEST=$$(aws ecr batch-get-image --repository-name $(ECR_REPO) \
 	  --image-ids imageTag=$(FROM) \
 	  --query 'images[0].imageManifest' --output text); \
 	aws ecr put-image --repository-name $(ECR_REPO) \
-	  --image-tag $(TO) --image-manifest "$$MANIFEST" --no-cli-pager && \
-	aws ecr batch-delete-image --repository-name $(ECR_REPO) \
-	  --image-ids imageTag=$(FROM) --no-cli-pager
-	@echo "Retagged: $(FROM) -> $(TO)"
+	  --image-tag $(TO) --image-manifest "$$MANIFEST" --no-cli-pager > /dev/null
+	@echo "Tagged: $(FROM) -> $(TO)  ($(FROM) tag unchanged)"
 
 
 .PHONY: local-build local-run build build-status build-logs \
-	ecr-list-images ecr-delete-image ecr-retag-image
+	ecr-list-images ecr-delete-image ecr-tag-image

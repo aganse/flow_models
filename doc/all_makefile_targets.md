@@ -31,7 +31,7 @@ All targets are run from the repo root directory.
 | `build-logs BUILD=<id>` | Fetch CloudWatch logs for a CodeBuild run |
 | `ecr-list-images` | List images in this project's ECR repository with all tags and push dates |
 | `ecr-delete-image TAG=<tag>` | Delete an image from ECR by tag |
-| `ecr-retag-image FROM=<tag> TO=<tag>` | Rename an ECR image tag (adds new tag, removes old) |
+| `ecr-tag-image FROM=<tag> TO=<tag>` | Tag an ECR image (equivalent to `docker tag`; `FROM` tag is left intact) |
 
 ---
 
