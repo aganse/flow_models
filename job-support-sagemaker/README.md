@@ -4,7 +4,7 @@ This directory contains support files for submitting training jobs via AWS
 SageMaker Training Jobs. The Makefile targets below are available from the
 repo root directory.
 
-See [`awsbatch-support/README.md`](../awsbatch-support/README.md) for the
+See [`job-support-awsbatch/README.md`](../job-support-awsbatch/README.md) for the
 AWS Batch alternative, which is better suited for queued/parallel job sweeps.
 
 ## Required environment variables
@@ -33,9 +33,9 @@ make sm-create-role     # create SageMaker execution IAM role
 Image builds run on AWS CodeBuild (shared with Batch pipeline):
 
 ```bash
-make run-build                          # main+gpu -> :main-gpu and :latest
-make run-build BRANCH=myfeature         # myfeature+gpu -> :myfeature-gpu only
-make run-build BRANCH=myfeature DEVICE=cpu  # -> :myfeature-cpu only
+make build                          # main+gpu -> :main-gpu and :latest
+make build BRANCH=myfeature         # myfeature+gpu -> :myfeature-gpu only
+make build BRANCH=myfeature DEVICE=cpu  # -> :myfeature-cpu only
 ```
 
 `BRANCH` defaults to `main`, `DEVICE` defaults to `gpu`. `:latest` always
@@ -47,7 +47,7 @@ make build-status BUILD=<id>   # show status of a submitted build
 make build-logs BUILD=<id>     # fetch CloudWatch logs for a build
 ```
 
-The build ID is printed by `make run-build` immediately after submission.
+The build ID is printed by `make build` immediately after submission.
 
 ## Configuring hyperparameters
 
@@ -73,9 +73,9 @@ Key `training_params` entries relevant to cloud runs:
 ## Submitting a job
 
 ```bash
-make sm-run SCRIPT=1                    # submit train_flowmodels1.py using :latest
-make sm-run SCRIPT=2                    # submit train_flowmodels2.py using :latest
-make sm-run SCRIPT=2 TAG=myfeature-gpu  # use a specific image tag
+make sm-submit SCRIPT=1                    # submit train_flowmodels1.py using :latest
+make sm-submit SCRIPT=2                    # submit train_flowmodels2.py using :latest
+make sm-submit SCRIPT=2 TAG=myfeature-gpu  # use a specific image tag
 ```
 
 `TAG` defaults to `latest` (= `main-gpu`).
@@ -97,12 +97,12 @@ becomes available, so training resumes from the last checkpoint rather than
 restarting from epoch 0.
 
 ```bash
-make sm-run SCRIPT=2 SPOT=1
+make sm-submit SCRIPT=2 SPOT=1
 ```
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SM_MAX_WAIT` | 90000 s | Total wall-clock deadline including interruption waits (must be ≥ `SM_MAX_RUNTIME`); override with e.g. `make sm-run SPOT=1 SM_MAX_WAIT=36000` |
+| `SM_MAX_WAIT` | 90000 s | Total wall-clock deadline including interruption waits (must be ≥ `SM_MAX_RUNTIME`); override with e.g. `make sm-submit SPOT=1 SM_MAX_WAIT=36000` |
 
 Checkpoint frequency is set by `checkpoint_every_n_epochs` in the params file
 (default 5). Checkpoints are also written on non-spot runs, providing
@@ -114,11 +114,11 @@ epoch-level recovery from crashes.
 ## Monitoring jobs
 
 ```bash
-make sm-list-jobs                  # list recent jobs and status
+make sm-list                  # list recent jobs and status
 make sm-status JOB=flowmodels2-... # describe a specific job
 make sm-logs JOB=flowmodels2-...   # fetch CloudWatch logs for a job
 make sm-cancel JOB=flowmodels2-... # stop a running job
 ```
 
-The job name is printed by `make sm-run` and follows the pattern
+The job name is printed by `make sm-submit` and follows the pattern
 `flowmodelsN-YYYYMMDD-HHMMSS`.

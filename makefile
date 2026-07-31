@@ -5,11 +5,9 @@ export PYTHON_BIN=python3.12
 # Environment variables AWS_ACCT_ID and AWS_REGION are expected to exist
 
 
-# This line allows the AWS Batch make commands to be run from repo root dir
-include awsbatch-support/makefile-awsbatchsupport.mk
-
-# This line allows the SageMaker Training Jobs commands to be run from repo root dir
-include sagemaker-support/makefile-sagemakersupport.mk
+include job-support-common/makefile-common.mk
+include job-support-awsbatch/makefile-awsbatch.mk
+include job-support-sagemaker/makefile-sagemaker.mk
 
 
 # These are system commands used in macros below.
@@ -43,47 +41,6 @@ unittests:
 lint:
 	flake8 .
 
-local-build:
-	# Build image locally for dev/testing. Usage: make local-build [DEVICE=cpu]
-	docker build -t $(ECR_REPO):$(version)-$(DEVICE) .
-
-run-local:
-	# Run a training script locally in Docker.
-	# Usage: make run-local SCRIPT=1  (or SCRIPT=2, etc.)
-ifndef SCRIPT
-	@echo "Usage: make run-local SCRIPT=1  (or SCRIPT=2, etc.)"
-	@exit 1
-endif
-ifndef MLFLOW_TRACKING_URI
-	$(error MLFLOW_TRACKING_URI is not set. You must export it before running make run-local)
-endif
-ifneq ($(SCRIPT),1)
-ifeq ($(IMAGES_PATH),)
-	$(error IMAGES_PATH is not set. Required for SCRIPT=$(SCRIPT) runs)
-endif
-endif
-	$(eval DATA_MOUNT := $(shell \
-	  if [ -z "$(IMAGES_PATH)" ]; then echo ""; \
-	  elif echo "$(IMAGES_PATH)" | grep -q "^s3://"; then echo ""; \
-	  else echo "-v $(IMAGES_PATH):$(IMAGES_PATH)"; \
-	  fi))
-	$(eval AWS_MOUNT := $(shell \
-	  [ -d $(HOME)/.aws ] && echo "-v $(HOME)/.aws:/root/.aws" || echo ""))
-	docker run --rm -it \
-	  -e TRAINING_SCRIPT=$(SCRIPT) \
-	  -e MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) \
-	  -e IMAGES_PATH=$(IMAGES_PATH) \
-	  -e WEIGHTS_PATH=$(WEIGHTS_PATH) \
-	  -e HOST_USER=$(shell whoami) \
-      -e AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID) \
-      -e AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY) \
-      -e AWS_DEFAULT_REGION=$(AWS_DEFAULT_REGION) \
-	  $(DATA_MOUNT) \
-	  $(AWS_MOUNT) \
-	  -v $(PWD)/params:/opt/ml/input/data/params \
-	  -v /usr/local/mlruns:/usr/local/mlruns \
-	  $(ECR_REPO):$(version)-$(DEVICE)
-
 
 # ensures all entries run every time since these aren't files
-.PHONY: create-env install-dev unittests lint local-build run-local
+.PHONY: create-env install-dev unittests lint

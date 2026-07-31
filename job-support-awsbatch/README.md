@@ -3,7 +3,7 @@
 This directory contains support files for submitting training jobs via AWS Batch.
 The Makefile targets below are available from the repo root directory.
 
-See [`sagemaker-support/README.md`](../sagemaker-support/README.md) for the
+See [`job-support-sagemaker/README.md`](../job-support-sagemaker/README.md) for the
 SageMaker Training Jobs alternative, which is simpler for one-off runs.
 
 ## Required environment variables
@@ -46,9 +46,9 @@ Image builds run on AWS CodeBuild (faster than local builds, avoids large upload
 
 ```bash
 make create-codebuild-project  # one-time: set up CodeBuild project linked to this repo
-make run-build                          # main+gpu -> :main-gpu and :latest
-make run-build BRANCH=myfeature         # myfeature+gpu -> :myfeature-gpu only
-make run-build BRANCH=myfeature DEVICE=cpu  # -> :myfeature-cpu only
+make build                          # main+gpu -> :main-gpu and :latest
+make build BRANCH=myfeature         # myfeature+gpu -> :myfeature-gpu only
+make build BRANCH=myfeature DEVICE=cpu  # -> :myfeature-cpu only
 ```
 
 `BRANCH` defaults to `main`, `DEVICE` defaults to `gpu`. `:latest` always
@@ -59,7 +59,7 @@ make build-status BUILD=<id>   # show status of a submitted build
 make build-logs BUILD=<id>     # fetch CloudWatch logs for a build
 ```
 
-The build ID is printed by `make run-build` immediately after submission.
+The build ID is printed by `make build` immediately after submission.
 
 To push a locally-built image instead:
 
@@ -71,19 +71,19 @@ make push-to-ecr DEVICE=gpu    # push to ECR
 ## Submitting a job
 
 ```bash
-make run-batchjob              # submit job; prints JOBID immediately
+make batch-submit              # submit job; prints JOBID immediately
 ```
 
 ## Monitoring jobs
 
 ```bash
-make list-jobs                   # show all jobs across all statuses
-make list-job-status JOBID=<id>  # check status of a specific job
+make batch-list                   # show all jobs across all statuses
+make batch-status JOBID=<id>  # check status of a specific job
 make batch-logs JOBID=<id>       # fetch CloudWatch logs for a job
-make cancel-job JOBID=<id>       # cancel a running job
+make batch-cancel JOBID=<id>       # cancel a running job
 ```
 
-The job ID is printed by `make run-batchjob` immediately after submission.
+The job ID is printed by `make batch-submit` immediately after submission.
 
 ## Resource inspection and cleanup
 

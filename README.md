@@ -125,14 +125,16 @@ option is testing.
 3. Run:
     ```bash
     make local-build DEVICE=cpu         # or =gpu  / note build can take a long time locally
-    make run-local SCRIPT=N DEVICE=cpu  # or =gpu / (esp for GPU) if it even completes at all
+    make local-run SCRIPT=N DEVICE=cpu  # or =gpu / (esp for GPU) if it even completes at all
     ```
+See [`job-support-common/README.md`](job-support-common/README.md) for more setup
+and running details of local Docker images.
 </details>
 <!-- ─────────────────────────────────────────────────────────────── -->
 <details>
 <summary><h4>3. Cloud training via SageMaker Training Jobs (recommended for full single runs)</h4></summary>
 
-Note `make run-build` here triggers AWS CodeBuild with `--source-version BRANCH`,
+Note `make build` here triggers AWS CodeBuild with `--source-version BRANCH`,
 which pulls from **GitHub** at that branch to build the Docker image in AWS.  Code
 must be pushed to GitHub to be picked up.  No EC2 setup needed — training runs
 entirely on independent AWS services.
@@ -152,27 +154,27 @@ entirely on independent AWS services.
    [`doc/config.md`](doc/config.md) for a description of every parameter.
 4. Run:
     ```bash
-    make run-build BRANCH=myfeature DEVICE=gpu  # default BRANCH=main, default DEVICE=gpu
+    make build BRANCH=myfeature DEVICE=gpu      # default BRANCH=main, default DEVICE=gpu
                                                 # (also note build-status and build-logs)
-    make sm-run SCRIPT=N                        # uses :latest (points to main-gpu image)
-    make sm-run SCRIPT=N TAG=mybranch-gpu       # use a specific image tag
-                SPOT=1 SM_MAX_WAIT=90000        # optional args:
+    make sm-submit SCRIPT=N                     # uses :latest (points to main-gpu image)
+    make sm-submit SCRIPT=N TAG=mybranch-gpu    # use a specific image tag
+                   SPOT=1 SM_MAX_WAIT=90000     # optional args:
                                                 # SPOT=1 uses a spot instance for the run
                                                 # SM_MAX_WAIT is total wall-clock time
                                                 #   limit for the job (seconds), including
                                                 #   all spot instances and lag between them.
-                                                # (also note sm-list-jobs, sm-status, sm-logs)
+                                                # (also note sm-list, sm-status, sm-logs)
     ```
-See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup
+See [`job-support-sagemaker/README.md`](job-support-sagemaker/README.md) for setup
 and monitoring details.
 </details>
 <!-- ─────────────────────────────────────────────────────────────── -->
 <details>
 <summary><h4>4. Cloud training via AWS Batch (for queued/parallel job sweeps)</h4></summary>
 
-Like option 3, `make run-build` pulls from GitHub so code must be pushed first.
+Like option 3, `make build` pulls from GitHub so code must be pushed first.
 AWS Batch requires more one-time infrastructure setup than SageMaker — see
-[`awsbatch-support/README.md`](awsbatch-support/README.md) for the full one-time
+[`job-support-awsbatch/README.md`](job-support-awsbatch/README.md) for the full one-time
 setup steps before running jobs for the first time.
 1. Set environment variables for settings that shouldn't be in the repo:
    - `AWS_ACCT_ID`: your AWS account ID (12-digit number).
@@ -193,12 +195,12 @@ setup steps before running jobs for the first time.
    registration time.
 4. Run:
     ```bash
-    make run-build BRANCH=myfeature DEVICE=gpu  # default BRANCH=main, default DEVICE=gpu
+    make build BRANCH=myfeature DEVICE=gpu      # default BRANCH=main, default DEVICE=gpu
                                                 # (also note build-status and build-logs)
-    make run-batchjob                           # submit job; prints JOBID immediately
-                                                # (also note list-jobs, list-job-status, batch-logs)
+    make batch-submit                           # submit job; prints JOBID immediately
+                                                # (also note batch-list, batch-status, batch-logs)
     ```
-See [`awsbatch-support/README.md`](awsbatch-support/README.md) for full setup
+See [`job-support-awsbatch/README.md`](job-support-awsbatch/README.md) for full setup
 and submission instructions.
 </details>
 
