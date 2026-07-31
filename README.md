@@ -156,6 +156,11 @@ entirely on independent AWS services.
                                                 # (also note build-status and build-logs)
     make sm-run SCRIPT=N                        # uses :latest (points to main-gpu image)
     make sm-run SCRIPT=N TAG=mybranch-gpu       # use a specific image tag
+                SPOT=1 SM_MAX_WAIT=90000        # optional args:
+                                                # SPOT=1 uses a spot instance for the run
+                                                # SM_MAX_WAIT is total wall-clock time
+                                                #   limit for the job (seconds), including
+                                                #   all spot instances and lag between them.
                                                 # (also note sm-list-jobs, sm-status, sm-logs)
     ```
 See [`sagemaker-support/README.md`](sagemaker-support/README.md) for setup

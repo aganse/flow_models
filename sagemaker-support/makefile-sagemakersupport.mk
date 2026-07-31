@@ -40,8 +40,9 @@ SM_ROLE_ARN=arn:aws:iam::${AWS_ACCT_ID}:role/SageMakerExecutionRole
 
 
 sm-what-to-do:
-	@echo "once/rarely:   sm-create-role"
+	@echo "once/rarely:   sm-create-role  sm-list-role"
 	@echo "sometimes:     run-build  (shared CodeBuild pipeline, pushes to ECR)"
+	@echo "image checks:  ecr-list-images"
 	@echo "more often:    sm-run SCRIPT=1 [TAG=main-gpu]  (TAG defaults to latest)"
 	@echo "job checks:    sm-list-jobs  sm-status JOB=name  sm-logs JOB=name  sm-cancel JOB=name"
 
@@ -56,6 +57,48 @@ sm-create-role:
 	@aws iam attach-role-policy --role-name SageMakerExecutionRole \
 		--policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
 	@echo "SageMakerExecutionRole created."
+
+sm-list-role:
+	# Show whether SageMakerExecutionRole exists and its ARN/creation date.
+	@aws iam get-role --role-name SageMakerExecutionRole --no-cli-pager \
+	  --query '{RoleName:Role.RoleName,Created:Role.CreateDate,Arn:Role.Arn}' \
+	  --output table 2>/dev/null || echo "SageMakerExecutionRole does not exist."
+
+ecr-list-images:
+	# List images in this project's ECR repository with tags and push dates.
+	@aws ecr describe-images --repository-name $(ECR_REPO) --no-cli-pager \
+	  --query 'sort_by(imageDetails,&imagePushedAt)[*].{PushedAt:imagePushedAt,Tags:join(`,`,imageTags),SizeBytes:imageSizeInBytes}' \
+	  --output table 2>/dev/null || echo "No images found (repo may not exist yet)."
+
+ecr-delete-image:
+	# Delete an image from ECR by tag.  Usage: make ecr-delete-image TAG=mybranch-gpu
+ifndef TAG
+	@echo "Usage: make ecr-delete-image TAG=mybranch-gpu"
+	@exit 1
+endif
+	@aws ecr batch-delete-image --repository-name $(ECR_REPO) \
+	  --image-ids imageTag=$(TAG) --no-cli-pager
+	@echo "Deleted: $(TAG)"
+
+ecr-retag-image:
+	# Rename an ECR image tag (adds new tag, removes old).
+	# Usage: make ecr-retag-image FROM=old-tag TO=new-tag
+ifndef FROM
+	@echo "Usage: make ecr-retag-image FROM=old-tag TO=new-tag"
+	@exit 1
+endif
+ifndef TO
+	@echo "Usage: make ecr-retag-image FROM=old-tag TO=new-tag"
+	@exit 1
+endif
+	@MANIFEST=$$(aws ecr batch-get-image --repository-name $(ECR_REPO) \
+	  --image-ids imageTag=$(FROM) \
+	  --query 'images[0].imageManifest' --output text); \
+	aws ecr put-image --repository-name $(ECR_REPO) \
+	  --image-tag $(TO) --image-manifest "$$MANIFEST" --no-cli-pager && \
+	aws ecr batch-delete-image --repository-name $(ECR_REPO) \
+	  --image-ids imageTag=$(FROM) --no-cli-pager
+	@echo "Retagged: $(FROM) -> $(TO)"
 
 sm-run:
 	# Submit a SageMaker Training Job for train_flowmodelsN.py.
@@ -160,4 +203,4 @@ endif
 	@echo "Stop requested for: ${JOB}"
 
 
-.PHONY: sm-what-to-do sm-create-role sm-run sm-list-jobs sm-status sm-logs sm-cancel
+.PHONY: sm-what-to-do sm-create-role sm-list-role ecr-list-images ecr-delete-image ecr-retag-image sm-run sm-list-jobs sm-status sm-logs sm-cancel

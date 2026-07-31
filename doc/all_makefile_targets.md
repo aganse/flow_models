@@ -22,7 +22,15 @@ All targets are run from the repo root directory.
 ### One-time / rare
 | Target | Description |
 |---|---|
-| `sm-create-role` | Create `SageMakerExecutionRole` IAM role with S3/ECR/CloudWatch permissions |
+| `sm-create-role` | Create `SageMakerExecutionRole` IAM role with S3/ECR/CloudWatch permissions.  Safe to run again if forgot whether already ran it. |
+| `sm-list-role` | Check whether `SageMakerExecutionRole` exists and show its ARN and creation date |
+
+### ECR images
+| Target | Description |
+|---|---|
+| `ecr-list-images` | List images in this project's ECR repository with all tags and push dates |
+| `ecr-delete-image TAG=<tag>` | Delete an image from ECR by tag |
+| `ecr-retag-image FROM=<tag> TO=<tag>` | Rename an ECR image tag (adds new tag, removes old) |
 
 ### Build (shared with AWS Batch)
 | Target | Description |
@@ -34,7 +42,7 @@ All targets are run from the repo root directory.
 ### Training jobs
 | Target | Description |
 |---|---|
-| `sm-run SCRIPT=N [TAG=latest] [SPOT=1]` | Submit SageMaker Training Job for `train_flowmodelsN.py` |
+| `sm-run SCRIPT=N [TAG=latest] [SPOT=1] [SM_MAX_WAIT=90000]` | Submit SageMaker Training Job for `train_flowmodelsN.py`; `SPOT=1` enables managed spot training with checkpointing (requires `WEIGHTS_PATH`); `SM_MAX_WAIT` sets total wall-clock deadline in seconds including interruption waits (must be ≥ `SM_MAX_RUNTIME=86400`) |
 | `sm-list-jobs` | List recent SageMaker training jobs and their status |
 | `sm-status JOB=<name>` | Show status, failure reason, and timing for a specific job |
 | `sm-logs JOB=<name>` | Fetch CloudWatch logs for a job |
