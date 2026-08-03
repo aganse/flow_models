@@ -38,11 +38,35 @@ SM_ROLE_ARN=arn:aws:iam::${AWS_ACCT_ID}:role/SageMakerExecutionRole
 
 
 sm-what-to-do:
-	@echo "once/rarely:   sm-create-role  sm-list-role"
+	@echo "once/rarely:   sm-create-sg VPC_ID=vpc-xxx,  sm-create-role,  sm-list-role"
 	@echo "sometimes:     build  (shared CodeBuild pipeline, pushes to ECR)"
 	@echo "image checks:  ecr-list-images"
 	@echo "more often:    sm-submit SCRIPT=1 [TAG=main-gpu]  (TAG defaults to latest)"
-	@echo "job checks:    sm-list  sm-status JOB=name  sm-logs JOB=name  sm-cancel JOB=name"
+	@echo "job checks:    sm-list,  sm-status JOB=name,  sm-logs JOB=name,  sm-cancel JOB=name"
+
+sm-create-sg:
+	# Create a SageMaker security group (one-time/rare run).
+	# Allow-all outbound (AWS default), no inbound. Name encodes creation date.
+	# Usage: make sm-create-sg VPC_ID=vpc-xxxxxxxx
+	# After running: export SM_SG=<id printed below>, and add an inbound rule on
+	# your EC2's SG allowing port 5000 (MLflow) from this new SG.
+ifndef VPC_ID
+	@echo "Usage: make sm-create-sg VPC_ID=vpc-xxxxxxxx"
+	@exit 1
+endif
+	$(eval SG_NAME := sagemaker-to-mlflow-$(shell date +%Y-%m-%d))
+	$(eval SG_ID := $(shell aws ec2 create-security-group \
+	  --group-name $(SG_NAME) \
+	  --description "SageMaker training jobs outbound to MLflow EC2" \
+	  --vpc-id $(VPC_ID) \
+	  --query 'GroupId' --output text --no-cli-pager))
+	@aws ec2 create-tags --resources $(SG_ID) \
+	  --tags Key=Name,Value=$(SG_NAME) --no-cli-pager
+	@echo "Created: $(SG_ID)  ($(SG_NAME))"
+	@echo "Outbound: allow-all (AWS default). Inbound: none."
+	@echo "Next steps:"
+	@echo "  export SM_SG=$(SG_ID)"
+	@echo "  Add inbound rule on your EC2's SG: port 5000 from $(SG_ID)"
 
 sm-create-role:
 	# Create the SageMaker execution role (one-time/rare run).
@@ -161,4 +185,4 @@ endif
 	@echo "Stop requested for: ${JOB}"
 
 
-.PHONY: sm-what-to-do sm-create-role sm-list-role sm-submit sm-list sm-status sm-logs sm-cancel
+.PHONY: sm-what-to-do sm-create-sg sm-create-role sm-list-role sm-submit sm-list sm-status sm-logs sm-cancel

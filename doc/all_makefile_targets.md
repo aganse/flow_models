@@ -40,6 +40,7 @@ All targets are run from the repo root directory.
 ### One-time / rare
 | Target | Description |
 |---|---|
+| `sm-create-sg VPC_ID=<vpc-id>` | Create a SageMaker security group (allow-all outbound, no inbound); name encodes creation date as `sagemaker-to-mlflow-YYYY-MM-DD`; prints the SG ID to export as `SM_SG` |
 | `sm-create-role` | Create `SageMakerExecutionRole` IAM role with S3/ECR/CloudWatch permissions.  Safe to re-run if unsure whether already done. |
 | `sm-list-role` | Check whether `SageMakerExecutionRole` exists and show its ARN and creation date |
 
