@@ -12,12 +12,14 @@
 
 
 # Repo-specific, non-sensitive settings — adjust to taste:
-SM_INSTANCE_TYPE ?= ml.g4dn.xlarge  # override with e.g. make sm-submit INSTANCE_TYPE=ml.g4dn.2xlarge
+# Override with e.g. make sm-submit SM_INSTANCE_TYPE=ml.g4dn.2xlarge
+SM_INSTANCE_TYPE ?= ml.g4dn.xlarge
 SM_VOLUME_SIZE=50
 SM_MAX_RUNTIME=86400
 SM_MAX_WAIT ?= 90000
 SM_JOB_PREFIX=flowmodels
-TAG ?= latest  # ECR image tag to use; override with e.g. make sm-submit SCRIPT=2 TAG=cleanup-gpu
+# ECR image tag to use; override with e.g. make sm-submit SCRIPT=2 TAG=cleanup-gpu
+TAG ?= latest
 
 # Spot instance flags: set when SPOT=1 is passed on the command line.
 # SM_MAX_WAIT is the total wall-clock deadline including interruption waits
