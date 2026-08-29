@@ -12,7 +12,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY *.py /app/
 
-COPY job-support-sagemaker/entrypoint.sh /opt/ml/code/entrypoint.sh
+COPY aws/job-support-common/entrypoint.sh /opt/ml/code/entrypoint.sh
 RUN chmod +x /opt/ml/code/entrypoint.sh
 
 ENTRYPOINT ["/opt/ml/code/entrypoint.sh"]

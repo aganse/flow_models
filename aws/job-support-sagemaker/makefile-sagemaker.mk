@@ -37,7 +37,7 @@ endif
 SM_ROLE_ARN=arn:aws:iam::${AWS_ACCT_ID}:role/SageMakerExecutionRole
 
 
-sm-what-to-do:
+sm-help:
 	@echo "once/rarely:   sm-create-sg VPC_ID=vpc-xxx,  sm-create-role,  sm-list-role"
 	@echo "sometimes:     build  (shared CodeBuild pipeline, pushes to ECR)"
 	@echo "image checks:  ecr-list-images"
@@ -185,4 +185,4 @@ endif
 	@echo "Stop requested for: ${JOB}"
 
 
-.PHONY: sm-what-to-do sm-create-sg sm-create-role sm-list-role sm-submit sm-list sm-status sm-logs sm-cancel
+.PHONY: sm-help sm-create-sg sm-create-role sm-list-role sm-submit sm-list sm-status sm-logs sm-cancel

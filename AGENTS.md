@@ -7,14 +7,13 @@ and `utils.py`. Training entry points are `train_flowmodels1.py` and
 `train_flowmodels2.py`; keep new experiment scripts in the same
 `train_flowmodelsN.py` pattern. Tests live in `tests/`. Documentation and
 parameter notes are in `doc/`. Generated artifacts are typically written under
-`model/` and `output/`. AWS Batch helper files are isolated in
-`awsbatch-support/`.
+`model/` and `output/`. AWS/cloud job support files (CodeBuild, ECR, SageMaker, Batch) are in `aws/`.
 
 ## Build, Test, and Development Commands
 - `make create-env` — create a new numbered virtualenv (for example `.venv4`) and install runtime dependencies.
 - `source .venvN/bin/activate` — activate the latest environment you created.
-- `make install-dev` — install developer tools from `requirements-dev.txt` before you run the unittests or linting.
-- `make unittests` — run the test suite.
+- `make install-dev` — install developer tools from `requirements-dev.txt` before you run the tests or linting.
+- `make test` — run the test suite.
 - `make lint` — run the code linting check (flake8).
 - `python train_flowmodels1.py` — run a local training script; update parameters in the script first.
 - `docker build --build-arg TENSORFLOW_PKG=tensorflow-cpu==2.12.0 -t flow_models:dev .` — example local CPU image build.

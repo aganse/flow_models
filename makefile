@@ -5,9 +5,9 @@ export PYTHON_BIN=python3.12
 # Environment variables AWS_ACCT_ID and AWS_REGION are expected to exist
 
 
-include job-support-common/makefile-common.mk
-include job-support-awsbatch/makefile-awsbatch.mk
-include job-support-sagemaker/makefile-sagemaker.mk
+include aws/job-support-common/makefile-common.mk
+include aws/job-support-awsbatch/makefile-awsbatch.mk
+include aws/job-support-sagemaker/makefile-sagemaker.mk
 
 
 # These are system commands used in macros below.
@@ -35,7 +35,7 @@ else
 	@echo "Not in a python virtual environment. Skipping pip install of dev packages."
 endif
 
-unittests:
+test:
 	python -m unittest -v
 
 lint:
@@ -43,4 +43,4 @@ lint:
 
 
 # ensures all entries run every time since these aren't files
-.PHONY: create-env install-dev unittests lint
+.PHONY: create-env install-dev test lint

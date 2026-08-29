@@ -13,6 +13,27 @@ root directory.
 |---|---|
 | `makefile-common.mk` | Shared Makefile targets (included by root `makefile`) |
 | `buildspec.yml` | AWS CodeBuild build specification for Docker image builds |
+| `codebuild-trust-policy.json` | IAM trust policy for CodeBuildServiceRole |
+| `codebuild-cloudwatch-policy.json` | IAM CloudWatch policy for CodeBuildServiceRole |
+| `entrypoint.sh` | Docker container entrypoint (shared by SageMaker and local Docker runs) |
+
+## One-time setup
+
+These targets create the shared AWS infrastructure used by both SageMaker and Batch:
+
+```bash
+make create-ecr-repo                 # create the ECR repository (very first time only)
+make create-codebuild-role           # create CodeBuildServiceRole IAM role
+make create-codebuild-project        # create the CodeBuild project
+make update-codebuild-project        # update an existing CodeBuild project (e.g. after path changes)
+```
+
+```bash
+make list-roles                      # list policies on CodeBuild and Batch IAM roles
+make delete-roles                    # detach policies and delete CodeBuild/Batch IAM roles
+make list-ecr-repos                  # broad view of all ECR repos and images
+make push-to-ecr DEVICE=gpu          # push a locally-built image to ECR (alternative to CodeBuild)
+```
 
 ## Local Docker builds
 
@@ -60,9 +81,9 @@ The build ID is printed by `make build` immediately after submission.
 ### ECR image inspection
 
 ```bash
-make ecr-list-images                      # list all images with tags and push dates
-make ecr-delete-image TAG=mybranch-gpu    # delete an image by tag
-make ecr-tag-image FROM=old TO=new        # tag an image (like docker tag; FROM left intact)
+make list-ecr-images                      # list all images with tags and push dates
+make delete-ecr-image TAG=mybranch-gpu    # delete an image by tag
+make tag-ecr-image FROM=old TO=new        # tag an image (like docker tag; FROM left intact)
 ```
 
 ## Required environment variables

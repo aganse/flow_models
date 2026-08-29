@@ -6,6 +6,9 @@ The Makefile targets below are available from the repo root directory.
 See [`job-support-sagemaker/README.md`](../job-support-sagemaker/README.md) for the
 SageMaker Training Jobs alternative, which is simpler for one-off runs.
 
+For ECR/CodeBuild setup (shared infrastructure), see
+[`job-support-common/README.md`](../job-support-common/README.md).
+
 ## Required environment variables
 
 Set these in your shell environment (e.g. `~/.zshrc` or `~/.bashrc`):
@@ -27,8 +30,13 @@ container at job registration time via `job_definition_template.json`. Re-run
 ## One-time setup (run once per AWS account)
 
 ```bash
-make create-ecr-repo           # create ECR repo for Docker images
-make create-codebuild-role     # create IAM role for CodeBuild image builds
+# Shared ECR/CodeBuild infrastructure (see aws/job-support-common/README.md):
+make create-ecr-repo
+make create-codebuild-role
+make create-codebuild-project
+
+# Batch-specific:
+make create-batch-executation-role  # create BatchExecutionRole (required by job definition)
 make create-batch-instance-profile  # create IAM instance profile for Batch compute
 ```
 
@@ -42,30 +50,14 @@ make register-job-definition   # register job definition (re-run after image cha
 
 ## Building and pushing the Docker image
 
-Image builds run on AWS CodeBuild (faster than local builds, avoids large upload):
+Image builds are managed via CodeBuild targets in `aws/job-support-common` — see
+[`aws/job-support-common/README.md`](../job-support-common/README.md) for full details.
 
 ```bash
-make create-codebuild-project  # one-time: set up CodeBuild project linked to this repo
 make build                          # main+gpu -> :main-gpu and :latest
 make build BRANCH=myfeature         # myfeature+gpu -> :myfeature-gpu only
-make build BRANCH=myfeature DEVICE=cpu  # -> :myfeature-cpu only
-```
-
-`BRANCH` defaults to `main`, `DEVICE` defaults to `gpu`. `:latest` always
-points to the most recent `main-gpu` build and is never updated by branch builds.
-
-```bash
-make build-status BUILD=<id>   # show status of a submitted build
-make build-logs BUILD=<id>     # fetch CloudWatch logs for a build
-```
-
-The build ID is printed by `make build` immediately after submission.
-
-To push a locally-built image instead:
-
-```bash
-make local-build DEVICE=gpu    # build GPU image locally
-make push-to-ecr DEVICE=gpu    # push to ECR
+make build-status BUILD=<id>        # show status of a submitted build
+make build-logs BUILD=<id>          # fetch CloudWatch logs for a build
 ```
 
 ## Submitting a job
@@ -78,9 +70,9 @@ make batch-submit              # submit job; prints JOBID immediately
 
 ```bash
 make batch-list                   # show all jobs across all statuses
-make batch-status JOBID=<id>  # check status of a specific job
-make batch-logs JOBID=<id>       # fetch CloudWatch logs for a job
-make batch-cancel JOBID=<id>       # cancel a running job
+make batch-status JOBID=<id>      # check status of a specific job
+make batch-logs JOBID=<id>        # fetch CloudWatch logs for a job
+make batch-cancel JOBID=<id>      # cancel a running job
 ```
 
 The job ID is printed by `make batch-submit` immediately after submission.
@@ -88,7 +80,6 @@ The job ID is printed by `make batch-submit` immediately after submission.
 ## Resource inspection and cleanup
 
 ```bash
-make list-ecr-repos            # list ECR repos and images
 make list-compute-resources    # list compute envs, queues, job defs, EC2 instances
 make delete-compute-resources1 # disable and delete job queue + job defs (step 1)
 make delete-compute-resources2 # delete compute environment (step 2, after step 1 settles)

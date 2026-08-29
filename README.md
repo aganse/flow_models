@@ -100,11 +100,12 @@ Click to expand your chosen run option:
 <details>
 <summary><h4>2. Locally in Docker (CPU or GPU, home machine or EC2 instance)</h4></summary>
 
-(CPU for application 1 or smoke-testing the container; GPU for application 2+
+(CPU for script #1 or smoke-testing the container; GPU for script #2+
 on a GPU-equipped machine.)  Note `make local-build` here uses your local
 working directory as the build context.  It COPYs whatever .py files exist on
 disk right now, including uncommitted changes, because the main purpose of this
-option is testing.
+option is testing.  Again to configure a GPU-enabled EC2 instance in AWS, you can
+follow [these instructions](https://github.com/aganse/py_tf2_gpu_dock_mlflow/blob/main/doc/aws_ec2_install.md).
 1. Set environment variables for settings that shouldn't be in the repo:
    - `IMAGES_PATH`: training data images location, required for train_flowmodels2.py
      but not for train_flowmodels1.py (non-image model); can be local path or S3 URI.
@@ -127,7 +128,7 @@ option is testing.
     make local-build DEVICE=cpu         # or =gpu  / note build can take a long time locally
     make local-run SCRIPT=N DEVICE=cpu  # or =gpu / (esp for GPU) if it even completes at all
     ```
-See [`job-support-common/README.md`](job-support-common/README.md) for more setup
+See [`aws/job-support-common/README.md`](aws/job-support-common/README.md) for more setup
 and running details of local Docker images.
 </details>
 <!-- ─────────────────────────────────────────────────────────────── -->
@@ -165,7 +166,7 @@ entirely on independent AWS services.
                                                 #   all spot instances and lag between them.
                                                 # (also note sm-list, sm-status, sm-logs)
     ```
-See [`job-support-sagemaker/README.md`](job-support-sagemaker/README.md) for setup
+See [`aws/job-support-sagemaker/README.md`](aws/job-support-sagemaker/README.md) for setup
 and monitoring details.
 </details>
 <!-- ─────────────────────────────────────────────────────────────── -->
@@ -174,7 +175,7 @@ and monitoring details.
 
 Like option 3, `make build` pulls from GitHub so code must be pushed first.
 AWS Batch requires more one-time infrastructure setup than SageMaker — see
-[`job-support-awsbatch/README.md`](job-support-awsbatch/README.md) for the full one-time
+[`aws/job-support-awsbatch/README.md`](aws/job-support-awsbatch/README.md) for the full one-time
 setup steps before running jobs for the first time.
 1. Set environment variables for settings that shouldn't be in the repo:
    - `AWS_ACCT_ID`: your AWS account ID (12-digit number).
@@ -200,7 +201,7 @@ setup steps before running jobs for the first time.
     make batch-submit                           # submit job; prints JOBID immediately
                                                 # (also note batch-list, batch-status, batch-logs)
     ```
-See [`job-support-awsbatch/README.md`](job-support-awsbatch/README.md) for full setup
+See [`aws/job-support-awsbatch/README.md`](aws/job-support-awsbatch/README.md) for full setup
 and submission instructions.
 </details>
 

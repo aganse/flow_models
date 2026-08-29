@@ -29,75 +29,28 @@ export MLFLOW_TRACKING_URI
 export IMAGES_PATH
 export WEIGHTS_PATH
 
-batch-what-to-do:
-	@echo "once/rarely:    create-ecr-repo create-codebuild-role create-batch-instance-profile"
-	@echo "sometimes:      create-codebuild-project build [BRANCH=main] [DEVICE=gpu]"
-	@echo "sometimes:      create-compute-env create-job-queue register-job-definition"
+batch-help:
+	@echo "once/rarely:    create-batch-executation-role  create-batch-instance-profile  create-compute-env  create-job-queue"
+	@echo "sometimes:      register-job-definition"
 	@echo "more often:     batch-submit"
-	@echo "build checks:   build-status BUILD=id  build-logs BUILD=id"
-	@echo "image checks:   ecr-list-images"
-	@echo "compute checks: list-compute-resources delete-compute-resources1 delete-compute-resources2"
 	@echo "job checks:     batch-list  batch-status JOBID=id  batch-logs JOBID=id  batch-cancel JOBID=id"
-
-create-ecr-repo:
-	# Create the repo in ECR where this app's docker images will be held on AWS.
-	# (one-time/rare run)
-	@aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION}
-
-check-codebuild-role-exists:
-	# Supports create-codebuild-role with a verification check.
-	@aws iam get-role --role-name CodeBuildServiceRole > /dev/null 2>&1; \
-	if [ $$? -eq 0 ]; then \
-		echo "Role CodeBuildServiceRole already exists. Skipping creation."; \
-		exit 1; \
-	fi
-
-create-codebuild-role: check-codebuild-role-exists
-	# Generates CodeBuildServiceRole needed for create-codebuild-project.
-	# (one-time/rare run)
-	@echo "Creating role CodeBuildServiceRole..."
-	@aws iam create-role \
-		--role-name CodeBuildServiceRole --no-cli-pager \
-		--assume-role-policy-document file://job-support-awsbatch/codebuild-trust-policy.json
-	@echo "Role CodeBuildServiceRole created successfully."
-	@aws iam create-policy --policy-name CodeBuildCloudWatchPolicy \
-		--policy-document file://job-support-awsbatch/codebuild-cloudwatch-policy.json
-	@aws iam attach-role-policy --role-name CodeBuildServiceRole \
-		--policy-arn arn:aws:iam::${AWS_ACCT_ID}:policy/CodeBuildCloudWatchPolicy
-	@echo "CodeBuildCloudWatchPolicy successfully attached to role CodeBuildServiceRole."
-	@aws iam attach-role-policy \
-		--role-name CodeBuildServiceRole \
-		--policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
-	@echo "AmazonEC2ContainerRegistryPowerUser successfully attached to role CodeBuildServiceRole."
-	@aws iam attach-role-policy \
-	    --role-name CodeBuildServiceRole \
-		--policy-arn arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess
-	@echo "AWSCodeBuildAdminAccess successfully attached to role CodeBuildServiceRole."
+	@echo "compute checks: list-compute-resources  delete-compute-resources1  delete-compute-resources2"
+	@echo "(for ECR/CodeBuild/image targets see aws/job-support-common/makefile-common.mk)"
 
 create-batch-executation-role:
-	@aws iam create-role --role-name BatchExecutionRole --assume-role-policy-document file://job-support-awsbatch/batch-trust-policy.json
-	@aws iam put-role-policy --role-name BatchExecutionRole --policy-name BatchExecutionPermissions --policy-document file://job-support-awsbatch/batch-permissions-policy.json
+	@aws iam create-role --role-name BatchExecutionRole --assume-role-policy-document file://aws/job-support-awsbatch/batch-trust-policy.json
+	@aws iam put-role-policy --role-name BatchExecutionRole --policy-name BatchExecutionPermissions --policy-document file://aws/job-support-awsbatch/batch-permissions-policy.json
 
 create-batch-instance-profile:
 	# Support create-compute-env by supplying a BatchInstanceProfile.
 	# (one-time/rare run)
 	@aws iam create-role --role-name BatchInstanceRole --no-cli-pager \
-		--assume-role-policy-document file://job-support-awsbatch/instance-trust-policy.json
+		--assume-role-policy-document file://aws/job-support-awsbatch/instance-trust-policy.json
 	@aws iam attach-role-policy --role-name BatchInstanceRole \
 		--policy-arn arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
 	@aws iam create-instance-profile --instance-profile-name BatchInstanceProfile
 	@aws iam add-role-to-instance-profile --instance-profile-name BatchInstanceProfile \
 		--role-name BatchInstanceRole
-
-create-codebuild-project:
-	# Set up the process to get code from Github branch, build docker image, and push to ECR repo.
-	# (occasional run - to push new training code/image)
-	@aws codebuild create-project \
-	    --name ${CODEBUILD_PROJ} \
-		--source "type=GITHUB,location=https://github.com/aganse/flow_models.git,buildspec=job-support-common/buildspec.yml" \
-	    --artifacts "type=NO_ARTIFACTS" \
-	    --environment "type=LINUX_CONTAINER,image=aws/codebuild/standard:4.0,computeType=BUILD_GENERAL1_SMALL,environmentVariables=[{name='ECR_REPO_URI', value='${ECR_REPO_URI}'},{name='DEVICE', value='${DEVICE}'}]" \
-		--service-role arn:aws:iam::${AWS_ACCT_ID}:role/CodeBuildServiceRole
 
 create-compute-env:
 	# Create Batch compute environment — g4dn.xlarge has 4 vCPUs so pinning vCPUs to 4.
@@ -140,7 +93,7 @@ endif
 ifndef MLFLOW_TRACKING_URI
 	$(error MLFLOW_TRACKING_URI is not set. Export it before running register-job-definition)
 endif
-	@envsubst < job-support-awsbatch/job_definition_template.json > /tmp/job-definition.json \
+	@envsubst < aws/job-support-awsbatch/job_definition_template.json > /tmp/job-definition.json \
 	&& aws batch register-job-definition --cli-input-json file:///tmp/job-definition.json --no-cli-pager
 	rm /tmp/job-definition.json
 
@@ -203,24 +156,6 @@ ifndef JOBID
 endif
 	@aws batch cancel-job --job-id $${JOBID} --reason "Cancelling job"
 
-list-ecr-repos:
-	# List all ECR repositories and their images (broad view across all repos).
-	@aws ecr describe-repositories --query 'repositories[*].repositoryName' --output text | \
-	while read repo; do echo "ECR Repository $${repo}:"; aws ecr list-images --repository-name "$${repo}" --query 'imageIds[*]' --output text --no-cli-pager; done
-
-list-roles:
-	# List the policies attached to CodeBuildServiceRole and AWSBatchServiceRole.
-	@-aws iam list-attached-role-policies --role-name CodeBuildServiceRole --no-cli-pager
-	@-aws iam list-attached-role-policies --role-name AWSBatchServiceRole --no-cli-pager
-
-delete-roles:
-	# Detach policies and delete CodeBuild/Batch IAM roles.
-	@-aws iam detach-role-policy --role-name CodeBuildServiceRole --policy-arn "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser"
-	@-aws iam detach-role-policy --role-name CodeBuildServiceRole --policy-arn "arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess"
-	@-aws iam detach-role-policy --role-name AWSBatchServiceRole --policy-arn "arn:aws:iam::aws:policy/AWSBatchServiceRolePolicy"
-	@-aws iam delete-role --role-name CodeBuildServiceRole
-	@-aws iam delete-role --role-name AWSBatchServiceRole
-
 list-compute-resources:
 	# List compute envs, job queues, job defs, and running EC2 instances.
 	@-aws batch describe-compute-environments --query 'computeEnvironments[*].[status, computeEnvironmentName, statusReason]' --output json | jq -r '["compute-env"] + .[] | @tsv'
@@ -242,22 +177,9 @@ delete-compute-resources2:
 	# Delete compute environment (step 2 of 2, run after step 1 settles).
 	@-aws batch delete-compute-environment --compute-environment ${COMPUTE_ENV_NAME} --no-cli-pager
 
-push-to-ecr:
-	# Tag and push a locally-built image to ECR (alternative to CodeBuild).
-	# Usage: make push-to-ecr DEVICE=gpu
-ifndef DEVICE
-	@echo "Usage: make push-to-ecr DEVICE=gpu  # or DEVICE=cpu"
-	@echo
-endif
-	@docker tag ${ECR_REPO}:${version}-$${DEVICE} ${ECR_REPO_URI}:latest
-	@aws ecr get-login-password --region $${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO_URI}
-	@docker push ${ECR_REPO_URI}:latest
 
-
-.PHONY: batch-what-to-do create-ecr-repo check-codebuild-role-exists create-codebuild-role \
-	create-batch-executation-role create-batch-instance-profile create-codebuild-project \
+.PHONY: batch-help \
+	create-batch-executation-role create-batch-instance-profile \
 	create-compute-env create-job-queue register-job-definition \
 	batch-submit batch-list batch-status batch-logs batch-cancel \
-	list-ecr-repos list-roles delete-roles \
-	list-compute-resources delete-compute-resources1 delete-compute-resources2 \
-	push-to-ecr
+	list-compute-resources delete-compute-resources1 delete-compute-resources2

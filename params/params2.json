@@ -15,7 +15,7 @@
     "regen_source": "pca_stats"
   },
   "training_params": {
-    "num_epochs": 150,
+    "num_epochs": 3,
     "batch_size": 64,
     "reg_level": 1e-5,
     "learning_rate": [4e-5, 7110, 0.85],
