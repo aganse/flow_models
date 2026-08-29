@@ -164,6 +164,7 @@ entirely on independent AWS services.
                                                 # SM_MAX_WAIT is total wall-clock time
                                                 #   limit for the job (seconds), including
                                                 #   all spot instances and lag between them.
+                   SM_INSTANCE_TYPE=ml.g4dn.2xlarge  # override default ml.g4dn.xlarge
                                                 # (also note sm-list, sm-status, sm-logs)
     ```
 See [`aws/job-support-sagemaker/README.md`](aws/job-support-sagemaker/README.md) for setup

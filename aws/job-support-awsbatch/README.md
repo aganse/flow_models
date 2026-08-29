@@ -16,8 +16,8 @@ Set these in your shell environment (e.g. `~/.zshrc` or `~/.bashrc`):
 ```bash
 export AWS_ACCT_ID=123456789012
 export AWS_REGION=us-west-2
-export AWSBATCH_SUBNET=subnet-xxxxxxxxxxxxxxxxx
-export AWSBATCH_SG=sg-xxxxxxxxxxxxxxxxx
+export AWSBATCH_SUBNET=$TRAINING_SUBNET     # set from make create-training-subnet (see job-support-common)
+export AWSBATCH_SG=$TRAINING_SG            # set from make create-training-sg (see job-support-common)
 export MLFLOW_TRACKING_URI=http://10.0.1.50:5000   # MLflow server in your VPC
 export IMAGES_PATH=s3://mybucket/afhq               # training data root (train/ and val/ subdirs)
 export WEIGHTS_PATH=s3://mybucket/weights           # S3 URI for model weights (optional; only used if save_model_weights=True)
@@ -30,6 +30,10 @@ container at job registration time via `job_definition_template.json`. Re-run
 ## One-time setup (run once per AWS account)
 
 ```bash
+# Shared VPC infrastructure (see aws/job-support-common/README.md):
+make create-training-subnet VPC_ID=vpc-xxx  # dedicated private training subnet
+make create-training-sg VPC_ID=vpc-xxx      # security group for training compute
+
 # Shared ECR/CodeBuild infrastructure (see aws/job-support-common/README.md):
 make create-ecr-repo
 make create-codebuild-role

@@ -12,7 +12,7 @@
 
 
 # Repo-specific, non-sensitive settings — adjust to taste:
-SM_INSTANCE_TYPE=ml.g4dn.xlarge
+SM_INSTANCE_TYPE ?= ml.g4dn.xlarge  # override with e.g. make sm-submit INSTANCE_TYPE=ml.g4dn.2xlarge
 SM_VOLUME_SIZE=50
 SM_MAX_RUNTIME=86400
 SM_MAX_WAIT ?= 90000
@@ -38,35 +38,13 @@ SM_ROLE_ARN=arn:aws:iam::${AWS_ACCT_ID}:role/SageMakerExecutionRole
 
 
 sm-help:
-	@echo "once/rarely:   sm-create-sg VPC_ID=vpc-xxx,  sm-create-role,  sm-list-role"
+	@echo "once/rarely:   create-training-subnet VPC_ID=vpc-xxx  create-training-sg VPC_ID=vpc-xxx  (in common)"
+	@echo "               sm-create-role  sm-list-role"
 	@echo "sometimes:     build  (shared CodeBuild pipeline, pushes to ECR)"
-	@echo "image checks:  ecr-list-images"
+	@echo "image checks:  list-ecr-images"
+	@echo "per-run:       create-vpc-endpoints VPC_ID=vpc-xxx  (before)  delete-vpc-endpoints  (after)"
 	@echo "more often:    sm-submit SCRIPT=1 [TAG=main-gpu]  (TAG defaults to latest)"
 	@echo "job checks:    sm-list,  sm-status JOB=name,  sm-logs JOB=name,  sm-cancel JOB=name"
-
-sm-create-sg:
-	# Create a SageMaker security group (one-time/rare run).
-	# Allow-all outbound (AWS default), no inbound. Name encodes creation date.
-	# Usage: make sm-create-sg VPC_ID=vpc-xxxxxxxx
-	# After running: export SM_SG=<id printed below>, and add an inbound rule on
-	# your EC2's SG allowing port 5000 (MLflow) from this new SG.
-ifndef VPC_ID
-	@echo "Usage: make sm-create-sg VPC_ID=vpc-xxxxxxxx"
-	@exit 1
-endif
-	$(eval SG_NAME := sagemaker-to-mlflow-$(shell date +%Y-%m-%d))
-	$(eval SG_ID := $(shell aws ec2 create-security-group \
-	  --group-name $(SG_NAME) \
-	  --description "SageMaker training jobs outbound to MLflow EC2" \
-	  --vpc-id $(VPC_ID) \
-	  --query 'GroupId' --output text --no-cli-pager))
-	@aws ec2 create-tags --resources $(SG_ID) \
-	  --tags Key=Name,Value=$(SG_NAME) --no-cli-pager
-	@echo "Created: $(SG_ID)  ($(SG_NAME))"
-	@echo "Outbound: allow-all (AWS default). Inbound: none."
-	@echo "Next steps:"
-	@echo "  export SM_SG=$(SG_ID)"
-	@echo "  Add inbound rule on your EC2's SG: port 5000 from $(SG_ID)"
 
 sm-create-role:
 	# Create the SageMaker execution role (one-time/rare run).
@@ -150,7 +128,7 @@ ifndef JOB
 	@exit 1
 endif
 	@aws sagemaker describe-training-job --training-job-name ${JOB} \
-	  --query '{Status:TrainingJobStatus,Reason:FailureReason,Start:TrainingStartTime,End:TrainingEndTime}' \
+	  --query '{Status:TrainingJobStatus,Secondary:SecondaryStatus,Message:SecondaryStatusTransitions[-1].StatusMessage,Reason:FailureReason,Start:TrainingStartTime,End:TrainingEndTime}' \
 	  --output table --no-cli-pager
 
 sm-logs:
@@ -185,4 +163,4 @@ endif
 	@echo "Stop requested for: ${JOB}"
 
 
-.PHONY: sm-help sm-create-sg sm-create-role sm-list-role sm-submit sm-list sm-status sm-logs sm-cancel
+.PHONY: sm-help sm-create-role sm-list-role sm-submit sm-list sm-status sm-logs sm-cancel

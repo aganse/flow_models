@@ -14,8 +14,8 @@ Set these in your shell environment (e.g. `~/.zshrc` or `~/.bashrc`):
 ```bash
 export AWS_ACCT_ID=123456789012
 export AWS_REGION=us-west-2
-export SM_SUBNET=subnet-xxxxxxxxxxxxxxxxx
-export SM_SG=sg-xxxxxxxxxxxxxxxxx
+export SM_SUBNET=$TRAINING_SUBNET           # set from make create-training-subnet (see job-support-common)
+export SM_SG=$TRAINING_SG                  # set from make create-training-sg (see job-support-common)
 export IMAGES_PATH=s3://mybucket/afhq       # S3 URI of training data (must be S3 for SageMaker)
 export WEIGHTS_PATH=s3://mybucket/weights   # S3 URI for model weights (optional; only used if save_model_weights=True)
 export MLFLOW_TRACKING_URI=http://10.0.1.50:5000   # MLflow server in your VPC
@@ -24,6 +24,11 @@ export MLFLOW_TRACKING_URI=http://10.0.1.50:5000   # MLflow server in your VPC
 ## One-time setup (run once per AWS account)
 
 ```bash
+# Shared VPC infrastructure (see aws/job-support-common/README.md):
+make create-training-subnet VPC_ID=vpc-xxx  # dedicated private training subnet
+make create-training-sg VPC_ID=vpc-xxx      # security group for training compute
+
+# SageMaker-specific:
 make create-ecr-repo    # create ECR repo for Docker images (shared with Batch)
 make sm-create-role     # create SageMaker execution IAM role
 ```
@@ -73,14 +78,15 @@ Key `training_params` entries relevant to cloud runs:
 ## Submitting a job
 
 ```bash
-make sm-submit SCRIPT=1                    # submit train_flowmodels1.py using :latest
-make sm-submit SCRIPT=2                    # submit train_flowmodels2.py using :latest
-make sm-submit SCRIPT=2 TAG=myfeature-gpu  # use a specific image tag
+make sm-submit SCRIPT=1                              # submit train_flowmodels1.py using :latest
+make sm-submit SCRIPT=2                              # submit train_flowmodels2.py using :latest
+make sm-submit SCRIPT=2 TAG=myfeature-gpu            # use a specific image tag
+make sm-submit SCRIPT=2 SM_INSTANCE_TYPE=ml.g4dn.2xlarge  # use a different instance type
 ```
 
-`TAG` defaults to `latest` (= `main-gpu`).
+`TAG` defaults to `latest` (= `main-gpu`). `SM_INSTANCE_TYPE` defaults to `ml.g4dn.xlarge`.
 
-The job runs on `ml.g4dn.xlarge`, reads training data from `IMAGES_PATH` via
+The job runs on the specified instance type (default `ml.g4dn.xlarge`), reads training data from `IMAGES_PATH` via
 FastFile mode (on-demand S3 streaming, no full copy), logs metrics to the
 MLflow server at `MLFLOW_TRACKING_URI`, and terminates automatically on
 completion. Inside the container `IMAGES_PATH` is set to the FastFile mount
@@ -102,6 +108,7 @@ make sm-submit SCRIPT=2 SPOT=1
 
 | Variable | Default | Meaning |
 |---|---|---|
+| `SM_INSTANCE_TYPE` | `ml.g4dn.xlarge` | EC2 instance type for the training job; override with e.g. `make sm-submit SM_INSTANCE_TYPE=ml.g4dn.2xlarge` |
 | `SM_MAX_WAIT` | 90000 s | Total wall-clock deadline including interruption waits (must be ≥ `SM_MAX_RUNTIME`); override with e.g. `make sm-submit SPOT=1 SM_MAX_WAIT=36000` |
 
 Checkpoint frequency is set by `checkpoint_every_n_epochs` in the params file

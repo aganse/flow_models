@@ -35,6 +35,48 @@ make list-ecr-repos                  # broad view of all ECR repos and images
 make push-to-ecr DEVICE=gpu          # push a locally-built image to ECR (alternative to CodeBuild)
 ```
 
+## VPC infrastructure for training jobs
+
+Both SageMaker and Batch training jobs run in a dedicated private subnet with no
+internet access. They reach ECR, S3, and CloudWatch exclusively via VPC endpoints,
+keeping all traffic on the AWS backbone. MLflow is reachable at its private VPC IP.
+
+### One-time VPC setup
+
+```bash
+make create-training-subnet VPC_ID=vpc-xxx        # create private subnet + route table
+                                                   # → export TRAINING_SUBNET=subnet-xxx
+make create-training-sg VPC_ID=vpc-xxx            # create compute security group
+                                                   # → export TRAINING_SG=sg-xxx
+```
+
+After running both, set these in your shell environment:
+
+```bash
+export TRAINING_SUBNET=subnet-xxx
+export TRAINING_SG=sg-xxx
+export SM_SUBNET=$TRAINING_SUBNET      # used by sm-submit
+export SM_SG=$TRAINING_SG             # used by sm-submit
+export AWSBATCH_SUBNET=$TRAINING_SUBNET  # used by create-compute-env
+export AWSBATCH_SG=$TRAINING_SG          # used by create-compute-env
+```
+
+Also add an inbound rule on your MLflow EC2's security group: allow TCP port 5000
+from `TRAINING_SG` so training instances can reach the MLflow tracking server.
+
+### Per-run VPC endpoints
+
+The three interface endpoints (~$0.01/AZ/hr each) should be created before a
+training run and deleted after to avoid unnecessary cost. The S3 gateway endpoint
+is free and permanent.
+
+```bash
+make create-vpc-endpoints VPC_ID=vpc-xxx  # create before submitting jobs
+make sm-submit SCRIPT=N                   # (or batch-submit)
+make sm-status JOB=...                    # monitor until Completed/Failed
+make delete-vpc-endpoints                 # delete interface endpoints after run
+```
+
 ## Local Docker builds
 
 Build and run the training image locally without a cloud submission:

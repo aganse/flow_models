@@ -29,6 +29,18 @@ All targets are run from the repo root directory.
 | `delete-roles` | Detach policies and delete CodeBuild/Batch IAM roles |
 | `push-to-ecr DEVICE=gpu` | Tag and push a locally-built image to ECR (alternative to CodeBuild) |
 
+### One-time / VPC infrastructure (shared by SageMaker and Batch)
+| Target | Description |
+|---|---|
+| `create-training-subnet VPC_ID=<vpc-id> [CIDR=10.0.10.0/24]` | Create a dedicated private subnet + route table for training compute; no internet route by design |
+| `create-training-sg VPC_ID=<vpc-id>` | Create security group for training compute instances (allow-all outbound, no inbound); name encodes creation date as `compute-job-submissions-YYYY-MM-DD`; prints the SG ID to export as `TRAINING_SG` |
+
+### Per-run / VPC endpoints
+| Target | Description |
+|---|---|
+| `create-vpc-endpoints VPC_ID=<vpc-id>` | Create VPC endpoints for ECR, S3, and CloudWatch Logs (run before training jobs); S3 gateway endpoint is free and permanent; interface endpoints are ~$0.01/AZ/hr and should be deleted after runs |
+| `delete-vpc-endpoints` | Delete the 3 interface endpoints (ecr.api, ecr.dkr, logs) tagged `Name=compute-job-submissions`; S3 gateway endpoint is left in place |
+
 ### Local Docker
 | Target | Description |
 |---|---|
@@ -57,14 +69,13 @@ All targets are run from the repo root directory.
 ### One-time / rare
 | Target | Description |
 |---|---|
-| `sm-create-sg VPC_ID=<vpc-id>` | Create a SageMaker security group (allow-all outbound, no inbound); name encodes creation date as `sagemaker-to-mlflow-YYYY-MM-DD`; prints the SG ID to export as `SM_SG` |
 | `sm-create-role` | Create `SageMakerExecutionRole` IAM role with S3/ECR/CloudWatch permissions.  Safe to re-run if unsure whether already done. |
 | `sm-list-role` | Check whether `SageMakerExecutionRole` exists and show its ARN and creation date |
 
 ### Training jobs
 | Target | Description |
 |---|---|
-| `sm-submit SCRIPT=N [TAG=latest] [SPOT=1] [SM_MAX_WAIT=90000]` | Submit SageMaker Training Job for `train_flowmodelsN.py`; `SPOT=1` enables managed spot training with checkpointing (requires `WEIGHTS_PATH`); `SM_MAX_WAIT` sets total wall-clock deadline in seconds including interruption waits (must be ≥ `SM_MAX_RUNTIME=86400`) |
+| `sm-submit SCRIPT=N [TAG=latest] [SPOT=1] [SM_MAX_WAIT=90000] [SM_INSTANCE_TYPE=ml.g4dn.xlarge]` | Submit SageMaker Training Job for `train_flowmodelsN.py`; `SPOT=1` enables managed spot training with checkpointing (requires `WEIGHTS_PATH`); `SM_MAX_WAIT` sets total wall-clock deadline in seconds including interruption waits (must be ≥ `SM_MAX_RUNTIME=86400`); `SM_INSTANCE_TYPE` overrides the default instance type |
 | `sm-list` | List recent SageMaker training jobs and their status |
 | `sm-status JOB=<name>` | Show status, failure reason, and timing for a specific job |
 | `sm-logs JOB=<name>` | Fetch CloudWatch logs for a job |
