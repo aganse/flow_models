@@ -1,11 +1,13 @@
 # Makefile for flow_models
 
-export DEVICE=gpu
+export DEVICE=cpu
+export PYTHON_BIN=python3.12
 # Environment variables AWS_ACCT_ID and AWS_REGION are expected to exist
 
 
-# This line allows the AWS Batch make commands to be run from repo root dir
-include awsbatch-support/makefile-awsbatchsupport.mk
+include aws/job-support-common/makefile-common.mk
+include aws/job-support-awsbatch/makefile-awsbatch.mk
+include aws/job-support-sagemaker/makefile-sagemaker.mk
 
 
 # These are system commands used in macros below.
@@ -18,9 +20,9 @@ version := v$(shell grep -E 'current_version\s*=' setup.cfg | cut -d '=' -f2 | t
 
 create-env:
 ifeq ($(check_repo_root), 1)
-	@next_venv=$$(python3 -c "import os; max_val = max([int(d.replace('.venv', '')) for d in os.listdir('.') if d.startswith('.venv') and d.replace('.venv', '').isdigit()] + [0]); print(f'.venv{max_val+1}')"); \
+	@next_venv=$$($(PYTHON_BIN) -c "import os; max_val = max([int(d.replace('.venv', '')) for d in os.listdir('.') if d.startswith('.venv') and d.replace('.venv', '').isdigit()] + [0]); print(f'.venv{max_val+1}')"); \
 	echo "Creating/installing new python env ${PWD}/$$next_venv"; \
-	bash -c "python3 -m venv $$next_venv && source $${next_venv}/bin/activate && pip install -r requirements.txt"
+	bash -c "$(PYTHON_BIN) -m venv $$next_venv && source $${next_venv}/bin/activate && pip install -r requirements.txt"
 else
 	@echo "Not in root directory of flow_models repo."
 endif
@@ -33,22 +35,12 @@ else
 	@echo "Not in a python virtual environment. Skipping pip install of dev packages."
 endif
 
-unittests:                                                            
-	python -m unittest -v                                             
+test:
+	python -m unittest -v
 
-build-cpu:
-	# Building with CPU package of TF for dev/testing on a light-compute instance.
-	docker build --build-arg TENSORFLOW_PKG=tensorflow-cpu==2.12.0 -t $(ECR_REPO):$(version)-cpu .
-
-build-gpu:
-	# Building with GPU package of TF - requires heavier-compute instance to build.
-	# For example building on the same g4dn.xlarge gpu instance it gets run on.
-	docker build --build-arg TENSORFLOW_PKG=tensorflow==2.12.0 -t ${ECR_REPO}:$(version)-gpu .
-
-run-local:
-	# Run/test the batch job on local instance
-	docker run --rm -it flow_models:$(version)-${DEVICE}
+lint:
+	flake8 .
 
 
 # ensures all entries run every time since these aren't files
-.PHONY: create-env install-dev unittests build-cpu build-gpu run-local
+.PHONY: create-env install-dev test lint

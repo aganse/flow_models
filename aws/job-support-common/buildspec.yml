@@ -1,0 +1,20 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO_URI
+      - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+  build:
+    commands:
+      - echo "imagestring - ECR_REPO_URI,IMAGE_TAG,DEVICE,BRANCH_TAG - ${ECR_REPO_URI},${IMAGE_TAG},${DEVICE},${BRANCH_TAG}"
+      - docker info | head -26
+      - docker ps
+      - docker pull ${ECR_REPO_URI}:${BRANCH_TAG}-${DEVICE} 2>/dev/null || true
+      - docker build --cache-from ${ECR_REPO_URI}:${BRANCH_TAG}-${DEVICE} -t ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} .
+      - docker tag ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} ${ECR_REPO_URI}:${BRANCH_TAG}-${DEVICE}
+      - if [ "${BRANCH_TAG}" = "main" ] && [ "${DEVICE}" = "gpu" ]; then docker tag ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} ${ECR_REPO_URI}:latest; fi
+  post_build:
+    commands:
+      - docker push ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE}
+      - docker push ${ECR_REPO_URI}:${BRANCH_TAG}-${DEVICE}
+      - if [ "${BRANCH_TAG}" = "main" ] && [ "${DEVICE}" = "gpu" ]; then docker push ${ECR_REPO_URI}:latest; fi

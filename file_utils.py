@@ -6,10 +6,14 @@ import re
 import boto3
 import numpy as np
 from PIL import Image
+from sklearn import datasets
+from sklearn.mixture import GaussianMixture
 import tensorflow as tf
-
-
-s3_paginator = boto3.client("s3").get_paginator("list_objects_v2")
+from tensorflow.keras.preprocessing.image import (
+    ImageDataGenerator,
+    load_img,
+    img_to_array,
+)
 
 
 def s3keys(
@@ -53,6 +57,7 @@ def s3keys(
     else:
         raise ValueError("s3_uri should start with s3://...")
     print(f"bucket_name={bucket_name}, prefix={prefix}")
+    s3_paginator = boto3.client("s3").get_paginator("list_objects_v2")
     prefix = prefix.lstrip(delimiter)
     if start_after and not start_after.startswith(
         prefix
@@ -186,6 +191,10 @@ class S3ImageDataGenerator:
             bucket_name, _, prefix = uri[5:].partition("/")
             s3 = boto3.client("s3")
             response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+            if "Contents" not in response:
+                raise FileNotFoundError(
+                    f"No objects found with prefix '{prefix}' in bucket '{bucket_name}'."
+                )
             all_keys = [
                 obj["Key"]
                 for obj in response["Contents"]
@@ -333,3 +342,164 @@ class S3ImageDataGenerator:
             zoomed_image, target_size[0], target_size[1]
         )
         return image
+
+
+def image_files_to_data_generator(filenames, target_size=(224, 224), batch_size=1):
+    """Generator for list of filename path strings (as opposed to image dir).
+    Meant for obtaining transformed points for specific image files (e.g. used
+    when doing the interpolation between categories of images).
+    """
+    if isinstance(filenames, str):
+        filenames = [filenames]
+    datagen = ImageDataGenerator()
+
+    def generator():
+        for filename in filenames:
+            img = load_img(filename, target_size=target_size)
+            x = img_to_array(img)
+            x = tf.expand_dims(x, axis=0)
+            yield datagen.flow(x, batch_size=batch_size)
+
+    return generator
+
+
+def dequantize_generator(gen):
+    """Wrap a batch generator to add dequantization noise U(0, 1/255) per pixel.
+    Converts discrete pixel values (multiples of 1/255) into a continuous
+    distribution, which is standard practice for training flow models on images.
+    """
+    for batch in gen:
+        yield batch + np.random.uniform(0, 1.0 / 255, batch.shape).astype(np.float32)
+
+
+def infinite_generator(generator):
+    """Ensures train_generator repeats indefinitely so can use augmentation.
+    (it isn't doing so without this - why not?)
+
+    Usage:
+    datagen = ImageDataGenerator(...)
+    train_generator = datagen.flow_from_directory(...)
+    infinite_train_generator = file_utils.infinite_generator(train_generator)
+    flow_model.fit(infinite_train_generator, epochs=num_epochs, ...)
+    """
+    generator = iter(generator)
+    while True:
+        batch = next(generator)
+        if isinstance(batch, tuple):
+            yield batch
+        else:
+            yield (batch,)
+
+
+def get_data_generator(
+    dataset, batch_size=32, class_mode=None, images_path=None, target_size=None
+):
+    """Supply data generator for specified dataset, as these datasets get reused
+    for multiple purposes in our different example applications, called as a
+    one-liner e.g. like this:
+    my_generator = get_data_generator(run_params["dataset"], training_params["batch_size"])
+
+    Parameters:
+    -----------
+    dataset: string of "moons", "GMM", "cats", "catsdogs", "invkin", or "glacgrav"
+    batch_size: int
+    images_path: string: local filesystem dir or s3 url like s3://mybucket/prefix,
+        currently only relevant to "cats" and "catsdogs" datasets,
+        if images_path starts with "s3://" then looks in S3, otherwise assumes local filesys.
+    target_size: 2d tuple of image height/width,
+        currently only relevant to "cats" and "catsdogs" datasets,
+        typically set to model_arch_params["image_shape"][:2].
+    class_mode: None for unsup or string "input" for supervised learning (via
+        image subdirs like "cats" and "dogs" within "train" or "val" dirs)
+    Returns:
+    --------
+    data generator object for specified dataset
+    """
+
+    n_means = 8
+    radius = 14
+    sd = 1
+    ths = 2 * np.pi / n_means * (np.arange(1, n_means + 1))
+    params = {
+        "mvn": {
+            "mean": [3.0, 5.0],
+            "covariance": sd * np.eye(2),
+        },
+        "gmm": {
+            "means": np.column_stack([radius * np.cos(ths), radius * np.sin(ths)]),
+            "covariances": [sd * np.eye(2) for _ in range(n_means)],
+            "weights": np.ones(n_means) / n_means
+        },
+        "moons": {"noise": 0.1},
+    }
+
+    if dataset == "moons":
+
+        def _create_generator():
+            while True:
+                X, y = datasets.make_moons(
+                    n_samples=batch_size, noise=params["moons"]["noise"]
+                )
+                yield X.astype(np.float32)
+
+    elif dataset.lower() == "mvn":
+
+        def _create_generator():
+            mean = np.array(params["mvn"]["mean"])
+            cov = np.array(params["mvn"]["covariance"])
+            while True:
+                X = np.random.multivariate_normal(mean, cov, size=batch_size)
+                yield X.astype(np.float32)
+
+    elif dataset.lower() == "gmm":
+
+        def _create_generator():
+            gmm = GaussianMixture(n_components=len(params["gmm"]["means"]))
+            gmm.weights_ = np.array(params["gmm"]["weights"])
+            gmm.means_ = np.array(params["gmm"]["means"])
+            gmm.covariances_ = np.array(params["gmm"]["covariances"])
+            gmm.precisions_cholesky_ = np.linalg.cholesky(
+                np.linalg.inv(gmm.covariances_)
+            )
+            while True:
+                X, y = gmm.sample(batch_size)
+                X = X / 10  # scaling to std~1.0 by previous analysis of Ardizzone example
+                # yield X.astype(np.float32), np.zeros(batch_size).astype(np.float32)
+                yield X.astype(np.float32)
+
+    elif dataset.lower() == "cats" or dataset.lower() == "catsdogs":
+
+        def _create_generator():
+            if images_path is not None:
+                if images_path[:5] == "s3://":
+                    IDG = S3ImageDataGenerator  # gets images from S3 bucket
+                else:
+                    IDG = ImageDataGenerator  # gets images from local filesystem
+            else:
+                raise ValueError("Dataset 'cats' requires 'images_path' parameter set.")
+
+            datagen = IDG(
+                rescale=1.0 / 255,
+                horizontal_flip=True,
+                zoom_range=0.1,
+                shear_range=0.0,  # 0.1,  # still debugging this feature for S3ImageDG
+                rotation_range=10,
+                width_shift_range=0.0,  # 0.1,  # still debugging this feature for S3ImageDG
+                height_shift_range=0.0,  # 0.1,  # still debugging this feature for S3ImageDG
+            )
+            output = datagen.flow_from_directory(
+                images_path,
+                target_size=target_size,  # images get resized to this size
+                batch_size=batch_size,
+                class_mode=None,
+                shuffle=False,  # True possibly helpful for training but pain for debug/analysis
+            )
+            return dequantize_generator(output)
+
+    elif dataset.lower() == "invkin" or dataset.lower() == "glacgrav":
+        raise ValueError("These will get implemented in future, but are not yet...")
+
+    else:
+        raise ValueError(f"Unrecognized dataset label '{dataset}'.")
+
+    return _create_generator()
