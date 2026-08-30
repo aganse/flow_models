@@ -108,7 +108,7 @@ endif
 	  $(SM_SPOT_FLAGS) \
 	  $(SM_STOPPING) \
 	  --hyper-parameters "{\"params\":\"$(PARAMS_BLOB)\"}" \
-	  --environment '{"TRAINING_SCRIPT":"$(SCRIPT)","IMAGE_TAG":"$(TAG)","MLFLOW_TRACKING_URI":"${MLFLOW_TRACKING_URI}","IMAGES_PATH":"/opt/ml/input/data/training","WEIGHTS_PATH":"${WEIGHTS_PATH}"}' \
+	  --environment '{"TRAINING_SCRIPT":"$(SCRIPT)","IMAGE_TAG":"$(TAG)","MLFLOW_TRACKING_URI":"${MLFLOW_TRACKING_URI}","IMAGES_PATH":"/opt/ml/input/data/training","WEIGHTS_PATH":"${WEIGHTS_PATH}","MLFLOW_ENABLE_ASYNC_LOGGING":"true"}' \
 	  --vpc-config Subnets=${SM_SUBNET},SecurityGroupIds=${SM_SG} \
 	  --no-cli-pager
 	@echo "Submitted: $(JOB_NAME)"
@@ -151,7 +151,10 @@ endif
 	  aws logs get-log-events \
 	    --log-group-name /aws/sagemaker/TrainingJobs \
 	    --log-stream-name "$$LOG_STREAM" \
-	    --query 'events[*].message' --output text --no-cli-pager; \
+	    --query 'events[*].message' --output text --no-cli-pager \
+	  | perl -pe 's/#010|#033//g'  \
+	  | perl -pe 's/#015/\n/g'  \
+	  | perl -pe 's/\[1m|\[0m|\[32m|\[37m/ /g';  \
 	fi
 
 sm-cancel:

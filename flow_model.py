@@ -648,49 +648,6 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             jit_compile=jit_compile,
         )
 
-        tracking_tool = training_params.get("tracking_tool")
-        valid_tools = {None, "tensorboard", "mlflow"}
-        if tracking_tool not in valid_tools:
-            raise ValueError(
-                f"Unsupported tracking_tool '{tracking_tool}'. Expected one of {valid_tools - {None}} or None."
-            )
-        tracking_port = training_params.get("tracking_port")
-        mlflow_run_started = False
-        if tracking_tool == "mlflow":
-            tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
-            if tracking_uri:
-                mlflow.set_tracking_uri(tracking_uri)
-            elif tracking_port:
-                mlflow.set_tracking_uri(f"http://localhost:{tracking_port}")
-            experiment_name = training_params.get(
-                "tracking_expt_name", run_params.get("dataset", "flow_model_training")
-            )
-            mlflow.set_experiment(experiment_name)
-            dataset = run_params.get("dataset", "flow_model_run")
-            num_gen = run_params.get("num_gen_sims", "NA")
-            run_name = f"{dataset}_{num_gen}"
-            if mlflow.active_run():
-                mlflow.end_run()
-            mlflow.start_run(run_name=run_name)
-            mlflow.set_tag("mlflow.user", os.environ.get("HOST_USER", os.environ.get("USER", "unknown")))
-            params_for_logging = {
-                **run_params,
-                **training_params,
-                **model_arch_params,
-                "tracking_tool": tracking_tool,
-            }
-            # Avoid logging artifacts-related flags that aren't parameters.
-            params_for_logging.pop("output_dir", None)
-            mlflow.log_params(
-                _flatten_params(
-                    params_for_logging
-                )
-            )
-            active_run = mlflow.active_run()
-            if active_run:
-                run_params["mlflow_run_id"] = active_run.info.run_id
-            mlflow_run_started = True
-
         initial_epoch = 0
         if training_params.get("checkpoint_every_n_epochs", 0) > 0:
             _ckpt_dir = (
