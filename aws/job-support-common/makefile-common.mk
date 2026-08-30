@@ -213,7 +213,7 @@ endif
 list-ecr-images:
 	# List images in this project's ECR repository with tags and push dates.
 	@aws ecr describe-images --repository-name $(ECR_REPO) --no-cli-pager \
-	  --query 'sort_by(imageDetails,&imagePushedAt)[*].{PushedAt:imagePushedAt,Tags:join(`,`,imageTags),SizeBytes:imageSizeInBytes}' \
+	  --query 'reverse(sort_by(imageDetails,&imagePushedAt))[*].{PushedAt:imagePushedAt,Tags:join(`,`,imageTags),SizeBytes:imageSizeInBytes}' \
 	  --output table 2>/dev/null || echo "No images found (repo may not exist yet)."
 
 delete-ecr-image:

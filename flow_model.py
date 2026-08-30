@@ -734,6 +734,7 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             * training_params["augmentation_factor"],
             callbacks=callbacks,
             initial_epoch=initial_epoch,
+            verbose=2 if os.path.exists("/opt/ml") else 1,  # per-epoch in SM logs, animated locally
         )
         print("Done training model.", flush=True)
         os.makedirs(run_params["model_dir"], exist_ok=True)

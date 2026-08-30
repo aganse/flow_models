@@ -110,6 +110,7 @@ endif
 	  --hyper-parameters "{\"params\":\"$(PARAMS_BLOB)\"}" \
 	  --environment '{"TRAINING_SCRIPT":"$(SCRIPT)","IMAGE_TAG":"$(TAG)","MLFLOW_TRACKING_URI":"${MLFLOW_TRACKING_URI}","IMAGES_PATH":"/opt/ml/input/data/training","WEIGHTS_PATH":"${WEIGHTS_PATH}","MLFLOW_ENABLE_ASYNC_LOGGING":"true"}' \
 	  --vpc-config Subnets=${SM_SUBNET},SecurityGroupIds=${SM_SG} \
+	  --tags '[{"Key":"JobName","Value":"$(JOB_NAME)"}]' \
 	  --no-cli-pager
 	@echo "Submitted: $(JOB_NAME)"
 	@echo "Check status: make sm-status JOB=$(JOB_NAME)"
@@ -130,7 +131,7 @@ ifndef JOB
 	@exit 1
 endif
 	@aws sagemaker describe-training-job --training-job-name ${JOB} \
-	  --query '{Status:TrainingJobStatus,Secondary:SecondaryStatus,Message:SecondaryStatusTransitions[-1].StatusMessage,Reason:FailureReason,Start:TrainingStartTime,End:TrainingEndTime}' \
+	  --query '{Status:TrainingJobStatus,Secondary:SecondaryStatus,Message:SecondaryStatusTransitions[-1].StatusMessage,Reason:FailureReason,InstanceType:ResourceConfig.InstanceType,Start:TrainingStartTime,End:TrainingEndTime}' \
 	  --output table --no-cli-pager
 
 sm-logs:
