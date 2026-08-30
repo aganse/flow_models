@@ -583,7 +583,7 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         run_name = f"{dataset}_{num_gen}"
         if mlflow.active_run():
             mlflow.end_run()
-        mlflow.start_run(run_name=run_name)
+        mlflow.start_run(run_name=run_name, log_system_metrics=True)
         mlflow.set_tag("mlflow.user", os.environ.get("HOST_USER", os.environ.get("USER", "unknown")))
         mlflow.set_tag("image_tag", os.environ.get("IMAGE_TAG", "[local]"))
         params_for_logging = {

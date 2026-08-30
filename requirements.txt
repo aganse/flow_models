@@ -9,3 +9,4 @@ tensorflow==2.18.0
 tf-keras==2.18.0
 tensorflow_probability==0.25.0
 mlflow>=2.14.0
+pynvml>=11.5.0
