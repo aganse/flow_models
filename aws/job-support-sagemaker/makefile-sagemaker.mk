@@ -133,6 +133,10 @@ endif
 	@aws sagemaker describe-training-job --training-job-name ${JOB} \
 	  --query '{Status:TrainingJobStatus,Secondary:SecondaryStatus,Message:SecondaryStatusTransitions[-1].StatusMessage,Reason:FailureReason,InstanceType:ResourceConfig.InstanceType,Start:TrainingStartTime,End:TrainingEndTime}' \
 	  --output table --no-cli-pager
+	@{ INFO=$$(aws sagemaker describe-training-job --training-job-name ${JOB} --no-cli-pager \
+	    --query '[ResourceConfig.InstanceType,TrainingStartTime,TrainingEndTime,EnableManagedSpotTraining]' \
+	    --output text 2>/dev/null) && \
+	    bash aws/job-support-sagemaker/sm-cost.sh "$(AWS_REGION)" $$INFO; } || true
 
 sm-logs:
 	# Tail CloudWatch logs for a running or completed job.
