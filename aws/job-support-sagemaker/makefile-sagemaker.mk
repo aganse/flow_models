@@ -17,6 +17,9 @@ SM_INSTANCE_TYPE ?= ml.g4dn.xlarge
 SM_VOLUME_SIZE=50
 SM_MAX_RUNTIME=86400
 SM_MAX_WAIT ?= 90000
+# Prefix for SageMaker job names; alphanumeric only (no hyphens or underscores) —
+# hyphens are used as separators between prefix, instance type, and date in the full name.
+# Override per-repo to keep job names meaningful across projects.
 SM_JOB_PREFIX=flowmodels
 # ECR image tag to use; override with e.g. make sm-submit SCRIPT=2 TAG=cleanup-gpu
 TAG ?= latest
@@ -93,7 +96,8 @@ endif
 ifndef SM_SG
 	$(error SM_SG is not set. Export it before running sm-submit)
 endif
-	$(eval JOB_NAME := $(SM_JOB_PREFIX)$(SCRIPT)-$(shell date +%Y%m%d-%H%M%S))
+	$(eval INST_ENC := $(shell echo "$(SM_INSTANCE_TYPE)" | sed 's/^ml\.//' | awk -F. '{s=$$2; gsub(/large/,"l",s); sub(/medium/,"m",s); sub(/small/,"s",s); print $$1"-"s}'))
+	$(eval JOB_NAME := $(SM_JOB_PREFIX)$(SCRIPT)-$(INST_ENC)-$(shell date +%Y%m%d-%H%M%S))
 	$(eval PARAMS_BLOB := $(shell base64 -i params/params$(SCRIPT).json 2>/dev/null || base64 params/params$(SCRIPT).json | tr -d '\n'))
 	@aws sagemaker create-training-job \
 	  --training-job-name $(JOB_NAME) \
@@ -120,8 +124,9 @@ sm-list:
 	@aws sagemaker list-training-jobs \
 	  --sort-by CreationTime --sort-order Descending \
 	  --max-results 20 \
-	  --query 'TrainingJobSummaries[*].[CreationTime,TrainingJobStatus,TrainingJobName]' \
-	  --output text --no-cli-pager
+	  --query 'TrainingJobSummaries[*].[CreationTime,TrainingEndTime,TrainingJobStatus,TrainingJobName]' \
+	  --output text --no-cli-pager | \
+	  python3 aws/job-support-sagemaker/sm-list-fmt.py
 
 sm-status:
 	# Show status of a submitted job.  Usage: make sm-status JOB=flowmodels2-20240101-120000
@@ -136,7 +141,7 @@ endif
 	@{ INFO=$$(aws sagemaker describe-training-job --training-job-name ${JOB} --no-cli-pager \
 	    --query '[ResourceConfig.InstanceType,TrainingStartTime,TrainingEndTime,EnableManagedSpotTraining]' \
 	    --output text 2>/dev/null) && \
-	    bash aws/job-support-sagemaker/sm-cost.sh "$(AWS_REGION)" $$INFO; } || true
+	    python3 aws/job-support-sagemaker/sm_cost.py "$(AWS_REGION)" $$INFO; } || true
 
 sm-logs:
 	# Tail CloudWatch logs for a running or completed job.
