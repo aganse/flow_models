@@ -1,6 +1,6 @@
-# CUDA 12.3 required for tensorflow>=2.15. Check TF release notes if updating TF version.
-# https://hub.docker.com/r/nvidia/cuda/tags?page=&page_size=&ordering=&name=12.3
-FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04
+# CUDA 12.6 + CuDNN 9.3 required for tensorflow==2.18. Check TF release notes if updating TF version.
+# https://hub.docker.com/r/nvidia/cuda/tags?page=&page_size=&ordering=&name=12.6
+FROM nvidia/cuda:12.6.2-cudnn-runtime-ubuntu22.04
 
 WORKDIR /app
 
