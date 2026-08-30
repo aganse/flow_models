@@ -9,7 +9,8 @@ phases:
       - echo "imagestring - ECR_REPO_URI,IMAGE_TAG,DEVICE,BRANCH_TAG - ${ECR_REPO_URI},${IMAGE_TAG},${DEVICE},${BRANCH_TAG}"
       - docker info | head -26
       - docker ps
-      - docker build -t ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} .
+      - docker pull ${ECR_REPO_URI}:${BRANCH_TAG}-${DEVICE} 2>/dev/null || true
+      - docker build --cache-from ${ECR_REPO_URI}:${BRANCH_TAG}-${DEVICE} -t ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} .
       - docker tag ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} ${ECR_REPO_URI}:${BRANCH_TAG}-${DEVICE}
       - if [ "${BRANCH_TAG}" = "main" ] && [ "${DEVICE}" = "gpu" ]; then docker tag ${ECR_REPO_URI}:${IMAGE_TAG}-${DEVICE} ${ECR_REPO_URI}:latest; fi
   post_build:

@@ -52,6 +52,7 @@ lion, tiger, wolf, etc), but of course you can use whatever images you want.
 - for local runs (options 1-2): place images in some directory (e.g. `data/`) and
   set `IMAGES_PATH` to that path.
 - for cloud runs (options 3-4): upload to S3 and set `IMAGES_PATH=s3://mybucket/prefix`.
+- in all cases, note IMAGES_PATH should contain subdirectories of `train/` and `val/`.
 
 Use the following directory structure in `data/` (but note subdirectories are
 merged by the data generator, so `cat` and `beachball` images mix together in
