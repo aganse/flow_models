@@ -12,6 +12,7 @@ flow_model.fit(train_data_generator, epochs=num_epochs, steps_per_epoch=steps_pe
 """
 
 import functools
+import getpass
 import glob
 import io
 import os
@@ -580,7 +581,7 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         if mlflow.active_run():
             mlflow.end_run()
         mlflow.start_run(run_name=run_name, log_system_metrics=True)
-        mlflow.set_tag("mlflow.user", os.environ.get("HOST_USER", os.environ.get("USER", "unknown")))
+        mlflow.set_tag("mlflow.user", os.environ.get("HOST_USER", getpass.getuser()))
         mlflow.set_tag("image_tag", os.environ.get("IMAGE_TAG", "[local]"))
         if os.path.exists("/opt/ml"):
             run_env = "sagemaker"
@@ -599,6 +600,9 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
             "tracking_tool": tracking_tool,
         }
         params_for_logging.pop("output_dir", None)
+        _images_path_orig = os.environ.get("IMAGES_PATH_ORIG", "")
+        if _images_path_orig:
+            params_for_logging["images_path"] = _images_path_orig
         mlflow.log_params(_flatten_params(params_for_logging))
         active_run = mlflow.active_run()
         if active_run:

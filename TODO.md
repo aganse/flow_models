@@ -8,16 +8,15 @@ Not comprehensive long-term tracking here, just keeping organized in current wor
   - [/] Tune Glow training: lower LR ~3e-5, slower decay, higher grad thresh
   - [ ] Raise num_epochs (150) and patience (40) for Glow
   - [ ] Try batch_size=32 + larger arch (steps_per_block=8, num_hidden=192)
-- [ ] Run test runs of awsbatch-support (overlap this with test runs above)
-- [ ] Add params-file override support to AWS Batch submission
-- [ ] Update/improve README.md readability and organization
 - [ ] GitHub unittests workflow
 - [ ] GitHub linting workflow
 - [ ] GitHub release workflow: trigger run-build on v* tags; update buildspec
       :latest condition to include v* pattern (one-line change)
-- [ ] Extract sagemaker-support and awsbatch-support into standalone reusable repo
+- [ ] Run test runs of awsbatch-support (overlap this with test runs above)
+- [ ] Add params-file override support to AWS Batch submission
 - [ ] Log AWS Batch job ID as MLflow param (equivalent of JOB_NAME for SageMaker runs)
-- [ ] Refactor output_dir/model_dir to auto-derive from run ID (see inference-mode implications)
+- [ ] Extract sagemaker-support and awsbatch-support into standalone reusable repo
+- [ ] Refactor output_dir/model_dir to auto-derive from run ID (but note inference-mode implications)
 - [ ] Use version-based ECR image tags on main branch (requires consistent update to makefile-common.mk + buildspec.yml)
 
 ### Done
@@ -31,3 +30,5 @@ Not comprehensive long-term tracking here, just keeping organized in current wor
 - [x] Log run_env tag and job_name param to MLflow; keep only last 2 checkpoints
 - [x] Delete checkpoints after final weights saved; document checkpoint_every_n_epochs
 - [x] Remove validate_args from FlowModel and params files
+- [x] Log original images_path S3 URI to MLflow (not in-container path)
+- [x] Log submitting user to MLflow user field across all run paths

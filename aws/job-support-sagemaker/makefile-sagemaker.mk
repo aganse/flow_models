@@ -112,7 +112,7 @@ endif
 	  $(SM_SPOT_FLAGS) \
 	  $(SM_STOPPING) \
 	  --hyper-parameters "{\"params\":\"$(PARAMS_BLOB)\"}" \
-	  --environment '{"TRAINING_SCRIPT":"$(SCRIPT)","IMAGE_TAG":"$(TAG)","MLFLOW_TRACKING_URI":"${MLFLOW_TRACKING_URI}","IMAGES_PATH":"/opt/ml/input/data/training","WEIGHTS_PATH":"${WEIGHTS_PATH}","MLFLOW_ENABLE_ASYNC_LOGGING":"true","JOB_NAME":"$(JOB_NAME)"}' \
+	  --environment '{"TRAINING_SCRIPT":"$(SCRIPT)","IMAGE_TAG":"$(TAG)","MLFLOW_TRACKING_URI":"${MLFLOW_TRACKING_URI}","IMAGES_PATH":"/opt/ml/input/data/training","IMAGES_PATH_ORIG":"${IMAGES_PATH}","WEIGHTS_PATH":"${WEIGHTS_PATH}","MLFLOW_ENABLE_ASYNC_LOGGING":"true","JOB_NAME":"$(JOB_NAME)","HOST_USER":"$(shell whoami)"}' \
 	  --vpc-config Subnets=${SM_SUBNET},SecurityGroupIds=${SM_SG} \
 	  --tags '[{"Key":"JobName","Value":"$(JOB_NAME)"}]' \
 	  --no-cli-pager
