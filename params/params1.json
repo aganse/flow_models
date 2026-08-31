@@ -29,6 +29,5 @@
     "bijector": "realnvp-based",
     "realnvp_flow_steps": 12,
     "realnvp_hidden_layers": [512, 512],
-    "validate_args": true
   }
 }

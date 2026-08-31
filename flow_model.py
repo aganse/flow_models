@@ -246,7 +246,6 @@ class FlowModel(tf.keras.Model):
         glow_num_blocks=3,
         glow_steps_per_block=8,
         glow_num_hidden=256,
-        validate_args=False,
         grad_norm_thresh=None,
         reg_level=0.01,
         log_scale_clip=None,
@@ -258,7 +257,6 @@ class FlowModel(tf.keras.Model):
         super().__init__()
         self.image_shape = image_shape
         self.bijector_type = bijector
-        self.validate_args = validate_args
         self.realnvp_flow_steps = realnvp_flow_steps
         self.realnvp_hidden_layers = list(realnvp_hidden_layers) if realnvp_hidden_layers is not None else []
         self.realnvp_permutation = realnvp_permutation
@@ -323,7 +321,7 @@ class FlowModel(tf.keras.Model):
                         # ),
                         # fyi log_scale_clip_fn doesn't exist in this version of tfb:
                         # log_scale_clip_fn=lambda log_s: tf.clip_by_value(log_s, -5.0, 5.0),
-                        validate_args=validate_args,
+                        # validate_args=True to enable shape/value checks for debugging
                         name="{}_{}_RealNVP".format(layer_name, i),
                     )
                 )
@@ -337,7 +335,6 @@ class FlowModel(tf.keras.Model):
                 flow_step_list.append(
                     tfb.Permute(
                         permutation=perm,
-                        validate_args=validate_args,
                         name="{}_{}_Permute".format(layer_name, i),
                     )
                 )
@@ -357,7 +354,7 @@ class FlowModel(tf.keras.Model):
             print("")
 
             self.flow_bijector = tfb.Chain(
-                list(reversed(flow_step_list)), validate_args=validate_args, name=layer_name
+                list(reversed(flow_step_list)), name=layer_name
             )
 
         base_distribution = tfd.MultivariateNormalDiag(
@@ -377,7 +374,6 @@ class FlowModel(tf.keras.Model):
             {
                 "image_shape": tuple(self.image_shape),
                 "bijector": str(self.bijector_type),
-                "validate_args": bool(self.validate_args),
                 "realnvp_flow_steps": int(self.realnvp_flow_steps),
                 "realnvp_hidden_layers": list(self.realnvp_hidden_layers),
                 "realnvp_permutation": str(self.realnvp_permutation),
@@ -586,6 +582,16 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
         mlflow.start_run(run_name=run_name, log_system_metrics=True)
         mlflow.set_tag("mlflow.user", os.environ.get("HOST_USER", os.environ.get("USER", "unknown")))
         mlflow.set_tag("image_tag", os.environ.get("IMAGE_TAG", "[local]"))
+        if os.path.exists("/opt/ml"):
+            run_env = "sagemaker"
+        elif os.environ.get("AWS_BATCH_JOB_ID"):
+            run_env = "awsbatch"
+        else:
+            run_env = "local"
+        mlflow.set_tag("run_env", run_env)
+        _job_name = os.environ.get("JOB_NAME", "")
+        if _job_name:
+            mlflow.log_param("job_name", _job_name)
         params_for_logging = {
             **run_params,
             **training_params,
@@ -692,11 +698,6 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
                 MLflowLoggingCallback()
             )
         if training_params.get("checkpoint_every_n_epochs", 0) > 0:
-            _ckpt_dir = (
-                "/opt/ml/checkpoints"
-                if os.path.exists("/opt/ml")
-                else os.path.join(run_params["model_dir"], "checkpoints")
-            )
             os.makedirs(_ckpt_dir, exist_ok=True)
             _steps_per_epoch = (
                 training_params["num_data_input"]
@@ -711,6 +712,20 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
                     verbose=1,
                 )
             )
+
+            class _KeepLast2Checkpoints(tf.keras.callbacks.Callback):
+                def __init__(self, ckpt_dir):
+                    super().__init__()
+                    self._ckpt_dir = ckpt_dir
+
+                def on_epoch_end(self, epoch, logs=None):
+                    files = sorted(glob.glob(
+                        os.path.join(self._ckpt_dir, "ckpt-*.weights.h5")
+                    ))
+                    for f in files[:-2]:
+                        os.remove(f)
+
+            callbacks.append(_KeepLast2Checkpoints(_ckpt_dir))
 
         def _train_data_gen():
             for batch in infinite_generator(train_gen):
@@ -751,7 +766,10 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
                     from urllib.parse import urlparse
                     parsed = urlparse(weights_dest)
                     bucket = parsed.netloc
-                    key = parsed.path.lstrip("/") + "/" + os.path.basename(weights_path)
+                    key_prefix = parsed.path.lstrip("/")
+                    if _job_name:
+                        key_prefix = f"{key_prefix}/{_job_name}"
+                    key = f"{key_prefix}/{os.path.basename(weights_path)}"
                     boto3.client("s3").upload_file(weights_path, bucket, key)
                     print(f"Model weights uploaded to s3://{bucket}/{key}\n", flush=True)
                 else:
@@ -759,6 +777,10 @@ def default_training_sequence(train_gen, run_params, training_params, model_arch
                     os.makedirs(weights_dest, exist_ok=True)
                     shutil.copy2(weights_path, weights_dest)
                     print(f"Model weights copied to {weights_dest}\n", flush=True)
+            if training_params.get("checkpoint_every_n_epochs", 0) > 0:
+                for f in glob.glob(os.path.join(_ckpt_dir, "ckpt-*.weights.h5")):
+                    os.remove(f)
+                print("Checkpoints deleted (final weights saved).\n", flush=True)
 
         # save the txt summary description of model arch:
         summary_path = _capture_and_save_summary(

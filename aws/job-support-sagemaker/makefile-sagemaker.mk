@@ -29,7 +29,7 @@ TAG ?= latest
 # (must be >= SM_MAX_RUNTIME); override with e.g. make sm-submit SPOT=1 SM_MAX_WAIT=36000
 ifdef SPOT
 SM_SPOT_FLAGS := --enable-managed-spot-training \
-  --checkpoint-config S3Uri=$(WEIGHTS_PATH)/checkpoints/
+  --checkpoint-config S3Uri=$(WEIGHTS_PATH)/checkpoints/$(JOB_NAME)/
 SM_STOPPING := --stopping-condition \
   MaxRuntimeInSeconds=$(SM_MAX_RUNTIME),MaxWaitTimeInSeconds=$(SM_MAX_WAIT)
 else
@@ -97,7 +97,7 @@ ifndef SM_SG
 	$(error SM_SG is not set. Export it before running sm-submit)
 endif
 	$(eval INST_ENC := $(shell echo "$(SM_INSTANCE_TYPE)" | sed 's/^ml\.//' | awk -F. '{s=$$2; gsub(/large/,"l",s); sub(/medium/,"m",s); sub(/small/,"s",s); print $$1"-"s}'))
-	$(eval JOB_NAME := $(SM_JOB_PREFIX)$(SCRIPT)-$(INST_ENC)-$(shell date +%Y%m%d-%H%M%S))
+	$(eval JOB_NAME := $(SM_JOB_PREFIX)$(SCRIPT)-$(INST_ENC)$(if $(SPOT),-spot,)-$(shell date +%Y%m%d-%H%M%S))
 	$(eval PARAMS_BLOB := $(shell base64 -i params/params$(SCRIPT).json 2>/dev/null || base64 params/params$(SCRIPT).json | tr -d '\n'))
 	@aws sagemaker create-training-job \
 	  --training-job-name $(JOB_NAME) \
@@ -112,7 +112,7 @@ endif
 	  $(SM_SPOT_FLAGS) \
 	  $(SM_STOPPING) \
 	  --hyper-parameters "{\"params\":\"$(PARAMS_BLOB)\"}" \
-	  --environment '{"TRAINING_SCRIPT":"$(SCRIPT)","IMAGE_TAG":"$(TAG)","MLFLOW_TRACKING_URI":"${MLFLOW_TRACKING_URI}","IMAGES_PATH":"/opt/ml/input/data/training","WEIGHTS_PATH":"${WEIGHTS_PATH}","MLFLOW_ENABLE_ASYNC_LOGGING":"true"}' \
+	  --environment '{"TRAINING_SCRIPT":"$(SCRIPT)","IMAGE_TAG":"$(TAG)","MLFLOW_TRACKING_URI":"${MLFLOW_TRACKING_URI}","IMAGES_PATH":"/opt/ml/input/data/training","WEIGHTS_PATH":"${WEIGHTS_PATH}","MLFLOW_ENABLE_ASYNC_LOGGING":"true","JOB_NAME":"$(JOB_NAME)"}' \
 	  --vpc-config Subnets=${SM_SUBNET},SecurityGroupIds=${SM_SG} \
 	  --tags '[{"Key":"JobName","Value":"$(JOB_NAME)"}]' \
 	  --no-cli-pager
@@ -161,10 +161,8 @@ endif
 	  aws logs get-log-events \
 	    --log-group-name /aws/sagemaker/TrainingJobs \
 	    --log-stream-name "$$LOG_STREAM" \
-	    --query 'events[*].message' --output text --no-cli-pager \
-	  | perl -pe 's/#010|#033//g'  \
-	  | perl -pe 's/#015/\n/g'  \
-	  | perl -pe 's/\[1m|\[0m|\[32m|\[37m/ /g';  \
+	    --no-cli-pager --output json \
+	  | python3 -c "import json,sys,re; [sys.stdout.write(re.sub(r'\x1b\[[0-9;]*[A-Za-z]','',e['message']).replace('\r\n','\n').replace('\r','\n')+('' if e['message'].endswith('\n') else '\n')) for e in json.load(sys.stdin)['events']]"; \
 	fi
 
 sm-cancel:

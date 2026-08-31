@@ -28,7 +28,7 @@ export ECR_REPO_URI=${AWS_ACCT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REP
 
 local-build:
 	# Build image locally for dev/testing.  Usage: make local-build [DEVICE=cpu]
-	docker build -t $(ECR_REPO):$(version)-$(DEVICE) .
+	docker build -t $(ECR_REPO):$(BRANCH)-$(DEVICE) .
 
 local-run:
 	# Run a training script locally in Docker.
@@ -65,7 +65,7 @@ endif
 	  $(AWS_MOUNT) \
 	  -v $(PWD)/params:/opt/ml/input/data/params \
 	  -v /usr/local/mlruns:/usr/local/mlruns \
-	  $(ECR_REPO):$(version)-$(DEVICE)
+	  $(ECR_REPO):$(BRANCH)-$(DEVICE)
 
 
 # ── One-time / ECR and CodeBuild setup ───────────────────────────────────────
@@ -134,7 +134,7 @@ ifndef DEVICE
 	@echo "Usage: make push-to-ecr DEVICE=gpu  # or DEVICE=cpu"
 	@echo
 endif
-	@docker tag ${ECR_REPO}:${version}-$${DEVICE} ${ECR_REPO_URI}:latest
+	@docker tag ${ECR_REPO}:${BRANCH}-$${DEVICE} ${ECR_REPO_URI}:latest
 	@aws ecr get-login-password --region $${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO_URI}
 	@docker push ${ECR_REPO_URI}:latest
 
