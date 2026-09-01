@@ -101,6 +101,7 @@ batch-submit:
 	# Submit a Batch training job.  Prints job ID immediately.
 	$(eval JOB_ID := $(shell aws batch submit-job --job-name MyGPUJob \
 	  --job-queue ${JOB_QUEUE_NAME} --job-definition ${JOB_DEF_NAME} \
+	  --overrides '{"environment":[{"name":"HOST_USER","value":"$(shell whoami)"}]}' \
 	  --query 'jobId' --output text --no-cli-pager))
 	@echo "Submitted: $(JOB_ID)"
 	@echo "Check status: make batch-status JOBID=$(JOB_ID)"

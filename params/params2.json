@@ -16,12 +16,12 @@
   },
   "training_params": {
     "num_epochs": 3,
-    "batch_size": 64,
+    "batch_size": 32,
     "reg_level": 1e-5,
-    "learning_rate": [4e-5, 7110, 0.85],
+    "learning_rate": [1e-4, 14000, 0.85],
     "early_stopping_patience": 40,
     "num_data_input": 5100,
-    "augmentation_factor": 3,
+    "augmentation_factor": 1,
     "grad_norm_thresh": 75,
     "log_scale_clip": 4,
     "jit_compile": true,
@@ -39,7 +39,6 @@
     "realnvp_permutation": "alternating",
     "glow_num_blocks": 3,
     "glow_steps_per_block": 6,
-    "glow_num_hidden": 128,
-    "validate_args": false
+    "glow_num_hidden": 128
   }
 }

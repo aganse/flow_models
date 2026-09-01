@@ -26,9 +26,14 @@ def extract_inst_enc(name):
     base = re.sub(r'-\d{8}-\d{6}$', '', name)
     idx = base.find('-')
     if idx == -1:
-        return None
+        return None, False
     middle = base[idx + 1:]
-    return middle if '-' in middle else None
+    if '-' not in middle:
+        return None, False
+    is_spot = middle.endswith('-spot')
+    if is_spot:
+        middle = middle[:-5]
+    return middle, is_spot
 
 
 print(f"{'Created':<19}  {'Duration':<15}  {'Status':<12}  {'Est Cost':<10}  Job")
@@ -50,10 +55,13 @@ for line in sys.stdin:
     except Exception:
         dur = "?"
 
-    inst_enc = extract_inst_enc(name)
+    inst_enc, is_spot = extract_inst_enc(name)
     if hrs is not None:
         cost, _ = estimate_cost(region, inst_enc, hrs)
-        cost_str = f"${cost:.2f}" if cost is not None else "unknown"
+        if cost is not None:
+            cost_str = f"{'<=' if is_spot else ''}${cost:.2f}"
+        else:
+            cost_str = "unknown"
     elif end_time == "None":
         cost_str = "(running)"
     else:

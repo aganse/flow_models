@@ -47,6 +47,7 @@ document focuses on intent and usage.
 | `tracking_port` | Port used when launching the selected tracking tool locally. | 1,2 |
 | `tracking_expt_name` | Experiment name under which runs are grouped in the tracking tool. | 1,2 |
 | `save_model_weights` | When `True`, saves model weights to `model_dir` after training; `False` skips the save (useful for fast experimentation). | 1,2 |
+| `checkpoint_every_n_epochs` | Save a checkpoint every N epochs for spot-instance resume; `0` disables. Keeps only the 2 most recent checkpoints during training; all are deleted once final weights are saved. | 1,2 |
 
 ## Model Architecture Parameters
 
