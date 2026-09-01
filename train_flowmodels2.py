@@ -71,7 +71,6 @@ def main():
         "glow_num_blocks": 3,  # number of multi-scale levels (need >=3 for 128x128)
         "glow_steps_per_block": 6,  # flow steps per level (paper uses 32; 8 is a lighter start)
         "glow_num_hidden": 128,  # filters in glow coupling CNN (paper uses 400; could use 256 here)
-        "validate_args": False,
     }
     utils.load_param_overrides(run_params, training_params, model_arch_params)
     os.makedirs(run_params["output_dir"], exist_ok=True)

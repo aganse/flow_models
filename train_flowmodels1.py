@@ -51,7 +51,6 @@ def main():
         # realnvp-based params:
         "realnvp_flow_steps": 12,  # 8 number of realnvp-based affine coupling layers
         "realnvp_hidden_layers": [512, 512, 512],  # 256,256 nodes/denselayer or filters/cnnlayer in affine coupling layers
-        "validate_args": True,
     }
     utils.load_param_overrides(run_params, training_params, model_arch_params)
     os.makedirs(run_params["output_dir"], exist_ok=True)
