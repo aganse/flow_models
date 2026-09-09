@@ -85,12 +85,16 @@ class TestFlowModelRealNVP(unittest.TestCase):
         self.assertTrue(tf.reduce_all(tf.math.is_finite(log_prob)).numpy())
 
     def test_alternating_permutation_round_trip(self):
+        # log_scale_clip bounds exp(log_scale) per layer, preventing float32
+        # overflow that can occur with 4 cascaded coupling layers and random
+        # Glorot-initialized weights.
         model = FlowModel(
             image_shape=(4, 4, 1),
             bijector="realnvp-based",
             realnvp_flow_steps=4,
             realnvp_hidden_layers=[8],
             realnvp_permutation="alternating",
+            log_scale_clip=5.0,
         )
         x = tf.random.normal([2, 4, 4, 1])
         z = model.call(x)
@@ -98,14 +102,17 @@ class TestFlowModelRealNVP(unittest.TestCase):
         np.testing.assert_allclose(x.numpy(), x_hat.numpy(), atol=1e-4)
 
     def test_random_permutation_round_trip(self):
-        tf.random.set_seed(42)
         np.random.seed(42)
+        # log_scale_clip bounds exp(log_scale) per layer, preventing float32
+        # overflow that can occur with 4 cascaded coupling layers and random
+        # Glorot-initialized weights.
         model = FlowModel(
             image_shape=(4, 4, 1),
             bijector="realnvp-based",
             realnvp_flow_steps=4,
             realnvp_hidden_layers=[8],
             realnvp_permutation="random",
+            log_scale_clip=5.0,
         )
         x = tf.random.normal([2, 4, 4, 1])
         z = model.call(x)
