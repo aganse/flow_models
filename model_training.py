@@ -48,8 +48,9 @@ _RUN_ID_FILENAME = "mlflow_run_id.txt"
 def detect_platform():
     """Return the current execution platform as a string.
 
-    Returns one of: 'sagemaker', 'awsbatch', 'local'.
-    Add new branches here (and in resolve_checkpoint_dir) when adding platforms.
+    Returns one of: 'sagemaker', 'awsbatch', 'local'.  Platform is inferred
+    from environment markers: presence of /opt/ml indicates SageMaker;
+    AWS_BATCH_JOB_ID set indicates AWS Batch; otherwise local.
     """
     if os.path.exists("/opt/ml"):
         return "sagemaker"
@@ -334,8 +335,8 @@ def _start_tracking(run_params, training_params, model_arch_params, ckpt_dir, pl
     """Set up experiment tracking and start (or resume) a run.
 
     Returns True if an MLflow run was started, False otherwise.
-    Add new tracking backends with elif blocks in this function and in the
-    MLflowLoggingCallback / _build_callbacks area above.
+    Currently supports tracking_tool values of 'mlflow' and 'tensorboard';
+    None disables tracking.
 
     MLflow run continuation across spot-instance restarts:
     The checkpoint directory is synced to/from S3 by SageMaker's managed spot
@@ -353,7 +354,6 @@ def _start_tracking(run_params, training_params, model_arch_params, ckpt_dir, pl
         )
 
     if tracking_tool != "mlflow":
-        # Future backends: elif tracking_tool == "wandb": ...
         return False
 
     tracking_port = training_params.get("tracking_port")
@@ -486,8 +486,9 @@ def default_training_sequence(  # noqa: C901
 ):
     """Orchestrate model construction, optional training, and weight saving.
 
-    Accepts the same arguments as the original flow_model.default_training_sequence
-    and returns (flow_model, history) where history is None for inference runs.
+    Takes a data generator and three parameter dicts (run_params,
+    training_params, model_arch_params) and returns (flow_model, history).
+    history is None for inference-only runs (do_train=False).
 
     When tracking_tool='mlflow', the MLflow run is left open on return so the
     calling script can log domain-specific post-training metrics and artifacts
