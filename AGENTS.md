@@ -2,12 +2,13 @@
 
 ## Project Structure & Module Organization
 This repository is a flat Python project centered on TensorFlow-based flow
-models. Core modules live at the repo root: `flow_model.py`, `file_utils.py`,
-and `utils.py`. Training entry points are `train_flowmodels1.py` and
-`train_flowmodels2.py`; keep new experiment scripts in the same
-`train_flowmodelsN.py` pattern. Tests live in `tests/`. Documentation and
-parameter notes are in `doc/`. Generated artifacts are typically written under
-`model/` and `output/`. AWS/cloud job support files (CodeBuild, ECR, SageMaker, Batch) are in `aws/`.
+models. Core modules live at the repo root: `flow_model.py` (model definition),
+`model_training.py` (training orchestration), `file_utils.py`, and `utils.py`.
+Training entry points are `train_flowmodels1.py` and `train_flowmodels2.py`;
+keep new experiment scripts in the same `train_flowmodelsN.py` pattern. Tests
+live in `tests/`. Documentation and parameter notes are in `doc/`. Generated
+artifacts are typically written under `model/` and `output/`. AWS/cloud job
+support files (CodeBuild, ECR, SageMaker, Batch) are in `aws/`.
 
 ## Build, Test, and Development Commands
 - `make create-env` — create a new numbered virtualenv (for example `.venv4`) and install runtime dependencies.

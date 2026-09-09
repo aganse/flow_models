@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 
 from file_utils import get_data_generator
-from flow_model import default_training_sequence
+from model_training import default_training_sequence, load_param_overrides
 import utils
 
 warnings.filterwarnings("ignore", category=UserWarning)  # TFP spews a number of these
@@ -52,7 +52,7 @@ def main():
         "realnvp_flow_steps": 12,  # 8 number of realnvp-based affine coupling layers
         "realnvp_hidden_layers": [512, 512, 512],  # 256,256 nodes/denselayer or filters/cnnlayer in affine coupling layers
     }
-    utils.load_param_overrides(run_params, training_params, model_arch_params)
+    load_param_overrides(run_params, training_params, model_arch_params)
     os.makedirs(run_params["output_dir"], exist_ok=True)
     os.makedirs(run_params["model_dir"], exist_ok=True)
     # List the param settings:

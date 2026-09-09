@@ -10,6 +10,11 @@ import tensorflow as tf
 
 from flow_model import FlowModel, ShiftAndLogScaleDense
 
+# Multiple FlowModel instances across test classes cause TF's global trace
+# cache to report retracing; suppress that noise since it's a test-structure
+# artifact, not a real production issue.
+tf.get_logger().setLevel("ERROR")
+
 
 class TestShiftAndLogScaleDense(unittest.TestCase):
 
@@ -49,7 +54,6 @@ class TestFlowModelRealNVP(unittest.TestCase):
             bijector="realnvp-based",
             realnvp_flow_steps=2,
             realnvp_hidden_layers=[8],
-            validate_args=False,
         )
 
     def setUp(self):
@@ -122,7 +126,6 @@ class TestFlowModelGlow(unittest.TestCase):
             glow_num_blocks=2,
             glow_steps_per_block=1,
             glow_num_hidden=8,
-            validate_args=False,
         )
 
     def setUp(self):
