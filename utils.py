@@ -1,7 +1,4 @@
-import base64
 import itertools
-import json
-import os
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -16,18 +13,6 @@ def unwrap_batch(batch):
     if isinstance(batch, (tuple, list)):
         return batch[0]
     return batch
-
-
-def load_param_overrides(run_params, training_params, model_arch_params):
-    hp_path = "/opt/ml/input/config/hyperparameters.json"
-    if os.path.exists(hp_path):
-        with open(hp_path) as f:
-            hparams = json.load(f)
-        if "params" in hparams:
-            overrides = json.loads(base64.b64decode(hparams["params"]))
-            run_params.update(overrides.get("run_params", {}))
-            training_params.update(overrides.get("training_params", {}))
-            model_arch_params.update(overrides.get("model_arch_params", {}))
 
 
 def imgs_to_gaussian_pts(

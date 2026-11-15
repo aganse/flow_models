@@ -11,7 +11,7 @@ import numpy as np
 import warnings
 
 from file_utils import get_data_generator, image_files_to_data_generator
-from flow_model import default_training_sequence
+from model_training import default_training_sequence, load_param_overrides
 import utils
 
 warnings.filterwarnings("ignore", category=UserWarning)  # TFP spews a number of these
@@ -72,7 +72,7 @@ def main():
         "glow_steps_per_block": 6,  # flow steps per level (paper uses 32; 8 is a lighter start)
         "glow_num_hidden": 128,  # filters in glow coupling CNN (paper uses 400; could use 256 here)
     }
-    utils.load_param_overrides(run_params, training_params, model_arch_params)
+    load_param_overrides(run_params, training_params, model_arch_params)
     os.makedirs(run_params["output_dir"], exist_ok=True)
     os.makedirs(run_params["model_dir"], exist_ok=True)
     # List the param settings:
@@ -301,8 +301,8 @@ def main():
             regen=gaussian_points,
         )
 
-    # Log to MLflow (if specified)
-    # ----------------------------
+    # Log analysis/plot results to MLflow (if specified)
+    # --------------------------------------------------
     if training_params["tracking_tool"] == "mlflow" and run_params.get("mlflow_run_open"):
         import mlflow
         for p in Path(run_params["output_dir"]).glob("*.png"):

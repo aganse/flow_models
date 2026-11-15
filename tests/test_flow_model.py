@@ -10,6 +10,11 @@ import tensorflow as tf
 
 from flow_model import FlowModel, ShiftAndLogScaleDense
 
+# Multiple FlowModel instances across test classes cause TF's global trace
+# cache to report retracing; suppress that noise since it's a test-structure
+# artifact, not a real production issue.
+tf.get_logger().setLevel("ERROR")
+
 
 class TestShiftAndLogScaleDense(unittest.TestCase):
 
@@ -49,7 +54,6 @@ class TestFlowModelRealNVP(unittest.TestCase):
             bijector="realnvp-based",
             realnvp_flow_steps=2,
             realnvp_hidden_layers=[8],
-            validate_args=False,
         )
 
     def setUp(self):
@@ -81,12 +85,16 @@ class TestFlowModelRealNVP(unittest.TestCase):
         self.assertTrue(tf.reduce_all(tf.math.is_finite(log_prob)).numpy())
 
     def test_alternating_permutation_round_trip(self):
+        # log_scale_clip bounds exp(log_scale) per layer, preventing float32
+        # overflow that can occur with 4 cascaded coupling layers and random
+        # Glorot-initialized weights.
         model = FlowModel(
             image_shape=(4, 4, 1),
             bijector="realnvp-based",
             realnvp_flow_steps=4,
             realnvp_hidden_layers=[8],
             realnvp_permutation="alternating",
+            log_scale_clip=5.0,
         )
         x = tf.random.normal([2, 4, 4, 1])
         z = model.call(x)
@@ -94,14 +102,17 @@ class TestFlowModelRealNVP(unittest.TestCase):
         np.testing.assert_allclose(x.numpy(), x_hat.numpy(), atol=1e-4)
 
     def test_random_permutation_round_trip(self):
-        tf.random.set_seed(42)
         np.random.seed(42)
+        # log_scale_clip bounds exp(log_scale) per layer, preventing float32
+        # overflow that can occur with 4 cascaded coupling layers and random
+        # Glorot-initialized weights.
         model = FlowModel(
             image_shape=(4, 4, 1),
             bijector="realnvp-based",
             realnvp_flow_steps=4,
             realnvp_hidden_layers=[8],
             realnvp_permutation="random",
+            log_scale_clip=5.0,
         )
         x = tf.random.normal([2, 4, 4, 1])
         z = model.call(x)
@@ -122,7 +133,6 @@ class TestFlowModelGlow(unittest.TestCase):
             glow_num_blocks=2,
             glow_steps_per_block=1,
             glow_num_hidden=8,
-            validate_args=False,
         )
 
     def setUp(self):

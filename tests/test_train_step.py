@@ -13,6 +13,11 @@ import tensorflow as tf
 
 from flow_model import FlowModel
 
+# Multiple FlowModel instances across test classes cause TF's global trace
+# cache to report retracing; suppress that noise since it's a test-structure
+# artifact, not a real production issue.
+tf.get_logger().setLevel("ERROR")
+
 
 def _one_train_step(model, dummy):
     # Use fit() on a single-batch dataset rather than train_on_batch():
@@ -33,7 +38,6 @@ class TestTrainStepRealNVP2D(unittest.TestCase):
             bijector="realnvp-based",
             realnvp_flow_steps=2,
             realnvp_hidden_layers=[8],
-            validate_args=False,
         )
         cls.model.compile(optimizer="adam")
         cls.dummy = tf.random.normal([8, 2])
@@ -66,7 +70,6 @@ class TestTrainStepRealNVP2D(unittest.TestCase):
             realnvp_flow_steps=2,
             realnvp_hidden_layers=[8],
             grad_norm_thresh=10.0,
-            validate_args=False,
         )
         model.compile(optimizer="adam")
         _ = model(self.dummy)
@@ -85,7 +88,6 @@ class TestTrainStepRealNVPImage(unittest.TestCase):
             bijector="realnvp-based",
             realnvp_flow_steps=2,
             realnvp_hidden_layers=[8],
-            validate_args=False,
         )
         cls.model.compile(optimizer="adam")
         cls.dummy = tf.random.normal([4, 4, 4, 1])
@@ -117,7 +119,6 @@ class TestTrainStepRealNVPImage(unittest.TestCase):
             realnvp_flow_steps=2,
             realnvp_hidden_layers=[8],
             grad_norm_thresh=10.0,
-            validate_args=False,
         )
         model.compile(optimizer="adam")
         _ = model(self.dummy)
@@ -141,7 +142,6 @@ class TestTrainStepGlow(unittest.TestCase):
             glow_num_blocks=2,
             glow_steps_per_block=1,
             glow_num_hidden=8,
-            validate_args=False,
         )
         cls.model.compile(optimizer="adam", jit_compile=False)
         cls.dummy = tf.random.normal([2, 8, 8, 3])
@@ -173,7 +173,6 @@ class TestTrainStepGlow(unittest.TestCase):
             glow_steps_per_block=1,
             glow_num_hidden=8,
             grad_norm_thresh=10.0,
-            validate_args=False,
         )
         model.compile(optimizer="adam", jit_compile=False)
         _ = model(self.dummy)
