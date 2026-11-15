@@ -7,10 +7,6 @@ Not comprehensive long-term tracking here, just keeping organized in current wor
 
 
 ### To Do
-- [/] Run test runs re improving blurry simulated images
-  - [/] Tune Glow training: lower LR ~3e-5, slower decay, higher grad thresh
-  - [ ] Raise num_epochs (150) and patience (40) for Glow
-  - [ ] Try batch_size=32 + larger arch (steps_per_block=8, num_hidden=192)
 - [ ] GitHub unittests workflow
 - [ ] GitHub linting workflow
 - [ ] GitHub release workflow: trigger run-build on v* tags; update buildspec
