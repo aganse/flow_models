@@ -1,0 +1,4 @@
+[tool.bumpversion]
+current_version = "0.1.0"
+commit = true
+tag = true

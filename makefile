@@ -15,8 +15,8 @@ include aws/job-support-sagemaker/makefile-sagemaker.mk
 check_venv := $(shell if [ -n "$$VIRTUAL_ENV" ]; then echo "1"; else echo "0"; fi)
 # (verify in repo's root directory)
 check_repo_root := $(shell if [ "$$(basename $$(pwd))" = "flow_models" ]; then echo "1"; else echo "0"; fi)
-# (extract app version from setup.cfg for docker image labeling)
-version := v$(shell grep -E 'current_version\s*=' setup.cfg | cut -d '=' -f2 | tr -d ' ')
+# (extract app version from .bumpversion.toml for docker image labeling)
+version := v$(shell grep -E '^current_version\s*=' .bumpversion.toml | cut -d '=' -f2 | tr -d ' "')
 
 create-env:
 ifeq ($(check_repo_root), 1)
