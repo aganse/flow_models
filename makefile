@@ -42,7 +42,7 @@ lint:
 	flake8 .
 
 release-check:
-	@case "$(PART)" in patch|minor|major) ;; *) echo "PART must be patch|minor|major"; exit 1;; esac
+	@case "$(PART)" in patch|minor|major) ;; *) echo "usage:  make release PART=<PART>  # note PART must be patch|minor|major"; exit 1;; esac
 	@command -v bump-my-version >/dev/null || { echo "bump-my-version not installed"; exit 1; }
 	@gh auth status >/dev/null 2>&1 || { echo "gh not authenticated"; exit 1; }
 	@test "$$(git rev-parse --abbrev-ref HEAD)" = main || { echo "not on main"; exit 1; }
