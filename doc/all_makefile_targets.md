@@ -117,3 +117,9 @@ All targets are run from the repo root directory.
 | `list-compute-resources` | List compute envs, job queues, job defs, and running EC2 instances |
 | `delete-compute-resources1` | Disable and delete job queue and job definitions (step 1 of 2) |
 | `delete-compute-resources2` | Delete compute environment (step 2 of 2, run after step 1 settles) |
+
+### Release
+| Target | Description |
+|---|---|
+| `release PART=patch|minor|major` | Cut a new version: checks that you're on an up-to-date, clean `main`; bumps `current_version` in `setup.cfg` (via bump-my-version), commits and tags it `vX.Y.Z`; pushes commit + tag atomically; creates the GitHub release with auto-generated notes. Requires `bump-my-version` and an authenticated `gh`. |
+| `release-check PART=...` | Run just those preflight checks. |

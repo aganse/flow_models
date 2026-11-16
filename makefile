@@ -41,6 +41,22 @@ test:
 lint:
 	flake8 .
 
+release-check:
+	@case "$(PART)" in patch|minor|major) ;; *) echo "PART must be patch|minor|major"; exit 1;; esac
+	@command -v bump-my-version >/dev/null || { echo "bump-my-version not installed"; exit 1; }
+	@gh auth status >/dev/null 2>&1 || { echo "gh not authenticated"; exit 1; }
+	@test "$$(git rev-parse --abbrev-ref HEAD)" = main || { echo "not on main"; exit 1; }
+	@test -z "$$(git status --porcelain)" || { echo "working tree not clean"; exit 1; }
+	@git fetch -q origin main --tags
+	@test "$$(git rev-parse HEAD)" = "$$(git rev-parse origin/main)" || { echo "local main != origin/main"; exit 1; }
+	@new=v$$(bump-my-version show --increment $(PART) new_version); \
+	 ! git rev-parse -q --verify "refs/tags/$$new" >/dev/null || { echo "tag $$new already exists"; exit 1; }
+
+release: release-check
+	bump-my-version bump $(PART)
+	git push --atomic origin main v$$(bump-my-version show current_version)
+	gh release create v$$(bump-my-version show current_version) --generate-notes
+
 
 # ensures all entries run every time since these aren't files
 .PHONY: create-env install-dev test lint

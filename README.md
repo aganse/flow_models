@@ -221,6 +221,14 @@ model.load_weights("model/model_weights.weights.h5")
 ```
 
 
+## Versioning
+
+The version lives in `setup.cfg` (`current_version`) and is used to label Docker images
+built from `main`. Releases are cut with `make release PART=patch|minor|major`, which
+bumps, git-tags `vX.Y.Z`, and publishes a GitHub release; see
+[doc/all_makefile_targets.md](doc/all_makefile_targets.md).
+
+
 ## References
 
 ### Papers
