@@ -440,20 +440,45 @@ def _start_tracking(run_params, training_params, model_arch_params, ckpt_dir, pl
 
 
 def _make_dataset(train_gen, model_arch_params):
-    """Wrap an infinite data generator in a prefetched tf.data.Dataset."""
+    """Wrap an infinite data generator in a prefetched tf.data.Dataset.
+
+    For plain flow models (y_dim absent or 0 in model_arch_params) the dataset
+    yields batches of x only, and any labels from the generator are dropped.
+    For INN-mode models (y_dim > 0) the generator must yield (x, y) pairs and
+    the dataset yields them as pairs, with y of shape (batch, y_dim).
+    """
+    y_dim = int(model_arch_params.get("y_dim", 0) or 0)
+
     def _gen():
         for batch in infinite_generator(train_gen):
             if isinstance(batch, (tuple, list)):
-                yield batch[0]
+                if y_dim > 0:
+                    if len(batch) < 2:
+                        raise ValueError(
+                            "y_dim > 0 requires a data generator that "
+                            "yields (x, y) pairs."
+                        )
+                    yield batch[0], batch[1]
+                else:
+                    yield batch[0]
             else:
                 yield batch
 
+    x_spec = tf.TensorSpec(
+        shape=(None, *model_arch_params["image_shape"]),
+        dtype=tf.float32,
+    )
+    if y_dim > 0:
+        output_signature = (
+            x_spec,
+            tf.TensorSpec(shape=(None, y_dim), dtype=tf.float32),
+        )
+    else:
+        output_signature = x_spec
+
     return tf.data.Dataset.from_generator(
         _gen,
-        output_signature=tf.TensorSpec(
-            shape=(None, *model_arch_params["image_shape"]),
-            dtype=tf.float32,
-        ),
+        output_signature=output_signature,
     ).prefetch(tf.data.AUTOTUNE)
 
 

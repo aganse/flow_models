@@ -40,7 +40,8 @@ endif
 ifndef MLFLOW_TRACKING_URI
 	$(error MLFLOW_TRACKING_URI is not set. You must export it before running make local-run)
 endif
-ifneq ($(SCRIPT),1)
+# only the image-based scripts (2 and 3) need IMAGES_PATH
+ifneq ($(filter $(SCRIPT),2 3),)
 ifeq ($(IMAGES_PATH),)
 	$(error IMAGES_PATH is not set. Required for SCRIPT=$(SCRIPT) runs)
 endif

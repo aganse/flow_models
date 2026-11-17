@@ -11,6 +11,19 @@ Training orchestration has moved to model_training.py.  Typical usage:
     flow_model, history = default_training_sequence(
         train_gen, run_params, training_params, model_arch_params
     )
+
+Two training modes, selected by the y_dim constructor argument:
+
+  y_dim == 0 (default; train_flowmodels1.py, train_flowmodels2.py):
+      plain density estimation, x <-> z, trained by maximum likelihood.
+
+  y_dim > 0 (train_flowmodels3.py - train_flowmodels7.py):
+      "INN" mode, x <-> [y, z], where the first y_dim components on the latent
+      side of the flow are trained to predict known targets y (labels, or
+      data of a forward problem) and the remaining components z are Gaussian
+      latents.  Trained on (x, y) pairs with a weighted sum of the losses of
+      Ardizzone et al 2019 (supervised y loss + MMD losses) and a likelihood
+      term in the spirit of Zhang & Curtis 2021.  See FlowModel._inn_losses.
 """
 
 import functools
@@ -179,9 +192,44 @@ class FlowModel(tf.keras.Model):
         grad_norm_thresh=None,
         reg_level=0.01,
         log_scale_clip=None,
+        y_dim=0,
+        z_dim=None,
+        x_dim=None,
+        lambda_y=1.0,
+        lambda_z=1.0,
+        lambda_x=1.0,
+        lambda_pad=1.0,
+        lambda_nll=0.0,
+        y_sigma=1.0,
+        pad_noise_scale=0.05,
+        mmd_bandwidths=(0.2, 1.5, 3.0),
     ):
         """RealNVP-based flow architecture, using TFP as much as possible so the
         architectures don't *exactly* match the papers but are pretty close.
+
+        INN-mode arguments (all ignored when y_dim == 0):
+          y_dim: number of leading latent-side components that represent y.
+          z_dim: number of Gaussian latent components following y; default is
+              all remaining components.  Any components left after y and z
+              are output-side padding.
+          x_dim: number of leading data-side components that hold the real
+              input x; default is all of them.  Any remaining components are
+              input-side padding.  (Not used with the glow bijector.)
+          lambda_y: weight of supervised loss  mean((y_pred - y_true)^2).
+          lambda_z: weight of MMD[q(y, z), p(y) p(z)]   (Ardizzone L_z).
+          lambda_x: weight of MMD[q(x), p(x)] from a backward pass
+              (Ardizzone L_x).
+          lambda_pad: weight of the padding losses (only if padding exists).
+          lambda_nll: weight of the likelihood term, per dimension:
+              -log q(x | y_true) / D, where on the latent side
+              y ~ N(y_true, y_sigma^2), z ~ N(0, I).
+          y_sigma: std of the y components about their targets in the
+              likelihood term (and in sample_posterior for likelihood-trained
+              models).
+          pad_noise_scale: amplitude of the noise written into padding
+              components (padding is "nearly zero", not exactly zero).
+          mmd_bandwidths: widths h of the inverse multiquadratic kernels
+              k(a, b) = h^2 / (h^2 + |a - b|^2) summed in the MMD.
         """
 
         super().__init__()
@@ -200,6 +248,38 @@ class FlowModel(tf.keras.Model):
         )
         self.shift_and_log_scale_layers = []
         flat_image_size = np.prod(image_shape)  # flattened size
+
+        # INN-mode bookkeeping (y_dim == 0 leaves the original behavior):
+        self.flat_dim = int(flat_image_size)
+        self.y_dim = int(y_dim or 0)
+        if z_dim is None:
+            self.z_dim = self.flat_dim - self.y_dim
+        else:
+            self.z_dim = int(z_dim)
+        self.x_dim = self.flat_dim if x_dim is None else int(x_dim)
+        self.out_pad_dim = self.flat_dim - self.y_dim - self.z_dim
+        self.x_pad_dim = self.flat_dim - self.x_dim
+        self.lambda_y = float(lambda_y)
+        self.lambda_z = float(lambda_z)
+        self.lambda_x = float(lambda_x)
+        self.lambda_pad = float(lambda_pad)
+        self.lambda_nll = float(lambda_nll)
+        self.y_sigma = float(y_sigma)
+        self.pad_noise_scale = float(pad_noise_scale)
+        self.mmd_bandwidths = tuple(float(h) for h in mmd_bandwidths)
+        if self.y_dim > 0:
+            if self.z_dim < 1 or self.out_pad_dim < 0:
+                raise ValueError(
+                    "Need y_dim + z_dim <= prod(image_shape) and z_dim >= 1; "
+                    f"got y_dim={self.y_dim}, z_dim={self.z_dim}, "
+                    f"prod(image_shape)={self.flat_dim}."
+                )
+            if not 1 <= self.x_dim <= self.flat_dim:
+                raise ValueError(
+                    f"Need 1 <= x_dim <= prod(image_shape); got {self.x_dim}."
+                )
+            if bijector == "glow" and self.x_pad_dim > 0:
+                raise ValueError("x_dim padding is not supported with glow.")
 
         if bijector == "glow":
 
@@ -308,6 +388,17 @@ class FlowModel(tf.keras.Model):
                 "grad_norm_thresh": self.grad_norm_thresh,
                 "reg_level": float(self.reg_level) if self.reg_level is not None else None,
                 "log_scale_clip": self.log_scale_clip,
+                "y_dim": int(self.y_dim),
+                "z_dim": int(self.z_dim),
+                "x_dim": int(self.x_dim),
+                "lambda_y": self.lambda_y,
+                "lambda_z": self.lambda_z,
+                "lambda_x": self.lambda_x,
+                "lambda_pad": self.lambda_pad,
+                "lambda_nll": self.lambda_nll,
+                "y_sigma": self.y_sigma,
+                "pad_noise_scale": self.pad_noise_scale,
+                "mmd_bandwidths": [float(h) for h in self.mmd_bandwidths],
             }
         )
         return base_config
@@ -389,7 +480,12 @@ class FlowModel(tf.keras.Model):
         consistent with many papers in the literature, and supporting the
         bits-per-dimension value as a "within one image" value - an average
         over the current batch.
+
+        In INN mode (y_dim > 0) data must be an (x, y) pair and the loss is
+        the weighted sum described in _inn_losses.
         """
+        if self.y_dim > 0:
+            return self._inn_train_step(data)
         images = data[0] if isinstance(data, (tuple, list)) else data
         if self.bijector_type == "glow":
             images = tf.reshape(images, (-1, *self.image_shape))
@@ -456,3 +552,314 @@ class FlowModel(tf.keras.Model):
         outdict["learning_rate"] = tf.convert_to_tensor(current_lr)
 
         return outdict
+
+    # ------------------------------------------------------------------
+    # INN mode:  x <-> [y, z]   (used when y_dim > 0)
+    # ------------------------------------------------------------------
+    # Naming: "data side" is where x lives (v = [x, input padding]) and
+    # "latent side" is where u = [y, z, output padding] lives.  In TFP terms
+    # data -> latent is flow_bijector.inverse and latent -> data is
+    # flow_bijector.forward, exactly as in call() and inverse() above.
+
+    def _data_to_latent(self, v):
+        """Map data-side batch v to a flat latent-side batch u.  Returns
+        (v reshaped as the bijector expects it, u)."""
+        if self.bijector_type == "glow":
+            v = tf.reshape(v, (-1, *self.image_shape))
+            result = self.flow_bijector.inverse(v)
+            batch_size = tf.shape(v)[0]
+            u = tf.concat(
+                [tf.reshape(t, (batch_size, -1)) for t in tf.nest.flatten(result)],
+                axis=-1,
+            )
+        else:
+            v = tf.reshape(v, (-1, self.flat_dim))
+            u = self.flow_bijector.inverse(v)
+        return v, u
+
+    def split_latent(self, u):
+        """Split flat latent-side batch into (y, z, output padding)."""
+        y = u[:, : self.y_dim]
+        z = u[:, self.y_dim : self.y_dim + self.z_dim]
+        pad = u[:, self.y_dim + self.z_dim :]
+        return y, z, pad
+
+    def _mmd(self, a, b):
+        """Maximum mean discrepancy between sample sets a and b (rows are
+        samples), with a sum of inverse multiquadratic kernels."""
+        def sq_dists(p, q):
+            pp = tf.reduce_sum(tf.square(p), axis=1, keepdims=True)
+            qq = tf.reduce_sum(tf.square(q), axis=1, keepdims=True)
+            d = pp + tf.transpose(qq) - 2.0 * tf.matmul(p, q, transpose_b=True)
+            return tf.maximum(d, 0.0)
+
+        daa = sq_dists(a, a)
+        dbb = sq_dists(b, b)
+        dab = sq_dists(a, b)
+        mmd = 0.0
+        for h in self.mmd_bandwidths:
+            h2 = h * h
+            mmd += (
+                tf.reduce_mean(h2 / (h2 + daa))
+                + tf.reduce_mean(h2 / (h2 + dbb))
+                - 2.0 * tf.reduce_mean(h2 / (h2 + dab))
+            )
+        return mmd
+
+    def _inn_losses(self, v, y_true):
+        """Losses for one batch of (data-side inputs v, targets y_true).
+
+        total = lambda_y   * mean (y_pred - y_true)^2              [L_y]
+              + lambda_z   * MMD[(stopgrad(y_pred), z), (y_true, z')]  [L_z]
+              + lambda_x   * MMD[x_backward, x]                     [L_x]
+              + lambda_pad * padding losses
+              + lambda_nll * NLL / D
+        where z' ~ N(0, I), x_backward = f^-1(y_true, z'), and
+          NLL = -log q(v | y_true)
+              = -log N(y_pred; y_true, y_sigma^2 I) - log N(z; 0, I)
+                - log N(pad; 0, pad_noise_scale^2 I) - log|det d u / d v|.
+        L_y, L_z, L_x and the padding losses follow Ardizzone et al 2019
+        Sec 3.3; the NLL term is the exact likelihood of a flow whose latent
+        y-components are centered on the targets, which (like the likelihood
+        term of Zhang & Curtis 2021 eqn 13) keeps training effective in high
+        dimensions where MMD is not.
+
+        Returns (total, dict of the individual terms).
+        """
+        y_true = tf.reshape(tf.cast(y_true, tf.float32), (-1, self.y_dim))
+        v = tf.reshape(tf.cast(v, tf.float32), (-1, self.flat_dim))
+        batch = tf.shape(v)[0]
+        x_true = v[:, : self.x_dim]
+        if self.x_pad_dim > 0:
+            # overwrite input padding with low-amplitude noise
+            v = tf.concat(
+                [
+                    x_true,
+                    self.pad_noise_scale
+                    * tf.random.normal((batch, self.x_pad_dim)),
+                ],
+                axis=-1,
+            )
+
+        # forward pass: data side -> latent side
+        v_shaped, u = self._data_to_latent(v)
+        y_pred, z_pred, pad_pred = self.split_latent(u)
+
+        loss_y = tf.reduce_mean(tf.square(y_pred - y_true))
+
+        # likelihood term (always computed, as it is also a useful metric)
+        event_ndims = 3 if self.bijector_type == "glow" else 1
+        ildj = self.flow_bijector.inverse_log_det_jacobian(
+            v_shaped, event_ndims=event_ndims
+        )
+        ildj = tf.reshape(ildj, (-1,))
+        nll = (
+            0.5 * tf.reduce_sum(
+                tf.square((y_pred - y_true) / self.y_sigma), axis=1
+            )
+            + self.y_dim * float(np.log(self.y_sigma))
+            + 0.5 * tf.reduce_sum(tf.square(z_pred), axis=1)
+            + 0.5 * self.flat_dim * float(np.log(2.0 * np.pi))
+            - ildj
+        )
+        if self.out_pad_dim > 0:
+            nll += (
+                0.5 * tf.reduce_sum(
+                    tf.square(pad_pred / self.pad_noise_scale), axis=1
+                )
+                + self.out_pad_dim * float(np.log(self.pad_noise_scale))
+            )
+        nll_per_dim = tf.reduce_mean(nll) / self.flat_dim
+
+        zero = tf.constant(0.0)
+        loss_z = zero
+        loss_x = zero
+        loss_pad = zero
+        has_pad = self.out_pad_dim > 0 or self.x_pad_dim > 0
+        z_samp = tf.random.normal((batch, self.z_dim))
+
+        if self.lambda_z > 0:
+            loss_z = self._mmd(
+                tf.concat([tf.stop_gradient(y_pred), z_pred], axis=-1),
+                tf.concat([y_true, z_samp], axis=-1),
+            )
+
+        if self.out_pad_dim > 0:
+            loss_pad += tf.reduce_mean(tf.square(pad_pred))
+
+        if self.lambda_x > 0 or (self.lambda_pad > 0 and has_pad):
+            # backward pass: latent side -> data side, from true y and
+            # freshly sampled z
+            parts = [y_true, z_samp]
+            if self.out_pad_dim > 0:
+                parts.append(
+                    self.pad_noise_scale
+                    * tf.random.normal((batch, self.out_pad_dim))
+                )
+            v_back = tf.reshape(
+                self.flow_bijector.forward(tf.concat(parts, axis=-1)),
+                (-1, self.flat_dim),
+            )
+            if self.lambda_x > 0:
+                loss_x = self._mmd(v_back[:, : self.x_dim], x_true)
+            if self.x_pad_dim > 0:
+                loss_pad += tf.reduce_mean(tf.square(v_back[:, self.x_dim :]))
+            if self.out_pad_dim > 0 and self.lambda_pad > 0:
+                # reconstruction with the output padding overwritten by
+                # noise, so that no information gets stored in the padding
+                u_noisy = tf.concat(
+                    [
+                        y_pred,
+                        z_pred,
+                        self.pad_noise_scale
+                        * tf.random.normal((batch, self.out_pad_dim)),
+                    ],
+                    axis=-1,
+                )
+                v_rec = tf.reshape(
+                    self.flow_bijector.forward(u_noisy), (-1, self.flat_dim)
+                )
+                loss_pad += tf.reduce_mean(
+                    tf.square(v_rec[:, : self.x_dim] - x_true)
+                )
+
+        total = (
+            self.lambda_y * loss_y
+            + self.lambda_z * loss_z
+            + self.lambda_x * loss_x
+            + self.lambda_pad * loss_pad
+            + self.lambda_nll * nll_per_dim
+        )
+        terms = {
+            "loss_y": loss_y,
+            "loss_z": loss_z,
+            "loss_x": loss_x,
+            "loss_pad": loss_pad,
+            "nll_per_dim": nll_per_dim,
+        }
+        return total, terms
+
+    def _inn_train_step(self, data):
+        """Training step for INN mode; data is an (x, y) pair of batches."""
+        if not isinstance(data, (tuple, list)) or len(data) < 2:
+            raise ValueError(
+                "FlowModel with y_dim > 0 must be trained on (x, y) pairs."
+            )
+        with tf.GradientTape() as tape:
+            total, terms = self._inn_losses(data[0], data[1])
+        tf.debugging.assert_all_finite(total, "NaN or Inf detected in INN loss")
+
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(total, trainable_vars)
+        for grad in gradients:
+            if grad is None:
+                continue
+            tf.debugging.assert_all_finite(
+                grad, "NaN or Inf detected in gradients"
+            )
+        present = [g for g in gradients if g is not None]
+        preclip_grad_norm = tf.linalg.global_norm(present)
+        if self.grad_norm_thresh is not None:
+            present, _ = tf.clip_by_global_norm(
+                present, clip_norm=self.grad_norm_thresh
+            )
+        postclip_grad_norm = tf.linalg.global_norm(present)
+        present_vars = [
+            v for g, v in zip(gradients, trainable_vars) if g is not None
+        ]
+        if present:
+            self.optimizer.apply_gradients(zip(present, present_vars))
+
+        outdict = {
+            "loss": total,
+            # same definition as in plain mode, from the likelihood term:
+            "bits_per_dim": terms["nll_per_dim"] / tf.math.log(2.0),
+        }
+        outdict.update(terms)
+        if self.grad_norm_thresh is not None:
+            outdict.update({
+                "preclip_grad_norm": preclip_grad_norm,
+                "postclip_grad_norm": postclip_grad_norm,
+            })
+        else:
+            outdict.update({"grad_norm": postclip_grad_norm})
+        current_lr = self.optimizer.learning_rate
+        if callable(current_lr):
+            current_lr = current_lr(self.optimizer.iterations)
+        outdict["learning_rate"] = tf.convert_to_tensor(current_lr)
+        return outdict
+
+    def pad_inputs(self, x):
+        """Zero-pad a numpy batch of x vectors (n, x_dim) to (n, flat_dim)."""
+        x = np.asarray(x, dtype=np.float32)
+        x = x.reshape(x.shape[0], -1)
+        if x.shape[1] == self.flat_dim:
+            return x
+        out = np.zeros((x.shape[0], self.flat_dim), dtype=np.float32)
+        out[:, : x.shape[1]] = x
+        return out
+
+    def forward_yz(self, x, batch_size=1000):
+        """Map a numpy batch of inputs x through the model in the forward
+        (data -> latent) direction.  x may be unpadded (n, x_dim), padded
+        (n, flat_dim), or image-shaped.  Returns numpy arrays
+        (y_pred, z, output padding)."""
+        x = self.pad_inputs(x)
+        chunks = []
+        for i in range(0, x.shape[0], batch_size):
+            chunk = tf.convert_to_tensor(x[i : i + batch_size])
+            if self.bijector_type == "glow":
+                chunk = tf.reshape(chunk, (-1, *self.image_shape))
+            chunks.append(self.call(chunk).numpy())
+        u = np.concatenate(chunks, axis=0)
+        return self.split_latent(u)
+
+    def sample_posterior(
+        self,
+        y_star,
+        num_samples=None,
+        z=None,
+        temperature=1.0,
+        y_noise_scale=None,
+        batch_size=1000,
+    ):
+        """Sample x ~ q(x | y*) by running the model backward from
+        [y*, z, padding] with z ~ N(0, temperature^2 I).
+
+        y_star: one target (y_dim,) repeated num_samples times, or an array
+            (n, y_dim) giving one target per sample.
+        z: optional array (n, z_dim) of latents to use instead of sampling.
+        y_noise_scale: std of Gaussian jitter added to y*; default is
+            y_sigma for likelihood-trained models (lambda_nll > 0, where y
+            has a Gaussian of that width about its target) and 0 otherwise.
+        Returns a numpy array (n, x_dim), or (n, *image_shape) for glow.
+        """
+        y = np.atleast_2d(np.asarray(y_star, dtype=np.float32))
+        if y.shape[0] == 1 and num_samples is not None:
+            y = np.repeat(y, int(num_samples), axis=0)
+        n = y.shape[0]
+        if z is None:
+            z = np.random.normal(size=(n, self.z_dim)) * temperature
+        z = np.asarray(z, dtype=np.float32).reshape(n, self.z_dim)
+        if y_noise_scale is None:
+            y_noise_scale = self.y_sigma if self.lambda_nll > 0 else 0.0
+        if y_noise_scale > 0:
+            y = y + (
+                np.random.normal(size=y.shape) * y_noise_scale * temperature
+            ).astype(np.float32)
+        parts = [y, z]
+        if self.out_pad_dim > 0:
+            parts.append(
+                np.random.normal(size=(n, self.out_pad_dim))
+                * self.pad_noise_scale
+            )
+        u = np.concatenate(parts, axis=1).astype(np.float32)
+        chunks = []
+        for i in range(0, n, batch_size):
+            chunks.append(
+                self.inverse(tf.convert_to_tensor(u[i : i + batch_size])).numpy()
+            )
+        v = np.concatenate(chunks, axis=0)
+        if self.bijector_type == "glow":
+            return v.reshape(n, *self.image_shape)
+        return v.reshape(n, self.flat_dim)[:, : self.x_dim]

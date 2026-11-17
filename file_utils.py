@@ -138,7 +138,7 @@ class S3ImageDataGenerator:
         self.width_shift_range = width_shift_range
         self.height_shift_range = height_shift_range
 
-    def flow_from_directory(
+    def flow_from_directory(  # noqa: C901
         self,
         uri,
         target_size=(256, 256),
@@ -146,6 +146,7 @@ class S3ImageDataGenerator:
         class_mode="binary",
         shuffle=True,
         save_format=["png", "jpg"],
+        classes=None,
     ):
         """
         Generates batches of augmented/normalized data from URI (incl subdirs).
@@ -164,6 +165,10 @@ class S3ImageDataGenerator:
             shuffle (bool): Whether to shuffle the order of images processed in the dataset.
             save_format (str, list, tuple): File extensions "png", "jpg", etc as individual
                 string or as list or tuple of strings.
+            classes (list of str): Optional list of class subdirectory names (e.g.
+                ["cat", "dog"]).  When given, only images whose parent directory
+                is in the list are used, and label indices follow the list order.
+                When None, labels (if requested) follow sorted subdirectory names.
 
         Returns:
             An iterator similar to TF's DirectoryIterator (but not explicitly one),
@@ -208,6 +213,19 @@ class S3ImageDataGenerator:
                     if file.endswith(tuple(save_format)):
                         all_keys.append(os.path.join(root, file))
 
+        # Class labels come from each image's parent directory name.
+        def _class_of(key):
+            parts = key.replace("\\", "/").split("/")
+            return parts[-2] if len(parts) > 1 else ""
+
+        if classes is not None:
+            all_keys = [k for k in all_keys if _class_of(k) in classes]
+            class_names = list(classes)
+        else:
+            class_names = sorted({_class_of(k) for k in all_keys})
+        class_index = {name: i for i, name in enumerate(class_names)}
+        want_labels = class_mode in ("sparse", "categorical")
+
         # Experimenting with s3keys generator rather than getting all file keys at once like above.
         # (But this prevents shuffle, whereas all_keys above is just long list of strings.)
         # Considering using this automatically when shuffle=False, to handle very large datasets.
@@ -222,7 +240,7 @@ class S3ImageDataGenerator:
                     batch_keys = all_keys[i : i + batch_size]
                     # batch_keys = list(islice(all_keys, batch_size))  # for all_keys generator experimentation
                     batch_images = []
-                    # batch_labels = []
+                    batch_labels = []
                     for key in batch_keys:
                         if uri[:5] == "s3://":
                             # Get image from S3 bucket
@@ -235,6 +253,8 @@ class S3ImageDataGenerator:
                             img = Image.open(key)
                         img = self.preprocess_image(img, target_size)
                         batch_images.append(img)
+                        if want_labels:
+                            batch_labels.append(class_index[_class_of(key)])
                         # TODO: finish implementing/debugging remaining class_modes:
                         # if class_mode != 'input' and class_mode is not None:
                         #     label = key.split('/')[-2]
@@ -250,9 +270,21 @@ class S3ImageDataGenerator:
                         yield np.array(batch_images), np.array(batch_images)
                     elif class_mode is None:
                         yield np.array(batch_images)
+                    elif class_mode == "sparse":
+                        yield (
+                            np.array(batch_images),
+                            np.array(batch_labels, dtype=np.float32),
+                        )
+                    elif class_mode == "categorical":
+                        onehot = np.zeros(
+                            (len(batch_labels), len(class_names)), dtype=np.float32
+                        )
+                        onehot[np.arange(len(batch_labels)), batch_labels] = 1.0
+                        yield np.array(batch_images), onehot
                     else:
                         raise ValueError(
-                            "only class_modes {None, 'input'} are implemented so far."
+                            "only class_modes {None, 'input', 'sparse', "
+                            "'categorical'} are implemented so far."
                         )
                         # The following line relies on batch_labels defined in
                         # commented-out lines above (which must be completed):
@@ -369,7 +401,15 @@ def dequantize_generator(gen):
     distribution, which is standard practice for training flow models on images.
     """
     for batch in gen:
-        yield batch + np.random.uniform(0, 1.0 / 255, batch.shape).astype(np.float32)
+        if isinstance(batch, (tuple, list)):  # (images, labels)
+            images = batch[0]
+            yield (
+                images
+                + np.random.uniform(0, 1.0 / 255, images.shape).astype(np.float32),
+                *batch[1:],
+            )
+        else:
+            yield batch + np.random.uniform(0, 1.0 / 255, batch.shape).astype(np.float32)
 
 
 def infinite_generator(generator):
@@ -391,8 +431,36 @@ def infinite_generator(generator):
             yield (batch,)
 
 
-def get_data_generator(
-    dataset, batch_size=32, class_mode=None, images_path=None, target_size=None
+# Color labels for the 8 components of the "gmm" dataset, as in Fig 2 of
+# Ardizzone et al 2019: four components red, two green, one blue, one purple.
+# (Component k sits at angle (k+1)*45 degrees on the circle.)
+GMM_LABEL_MAP = (0, 0, 0, 0, 1, 1, 2, 3)
+GMM_LABEL_COLORS = ("red", "green", "blue", "purple")
+
+
+def pad_to_dim(x, dim):
+    """Zero-pad rows of 2D array x on the right to width dim (None = no-op)."""
+    x = np.asarray(x, dtype=np.float32)
+    if dim is None or x.shape[1] == dim:
+        return x
+    if x.shape[1] > dim:
+        raise ValueError(f"cannot pad width {x.shape[1]} down to {dim}")
+    out = np.zeros((x.shape[0], dim), dtype=np.float32)
+    out[:, : x.shape[1]] = x
+    return out
+
+
+def get_data_generator(  # noqa: C901
+    dataset,
+    batch_size=32,
+    class_mode=None,
+    images_path=None,
+    target_size=None,
+    pad_to=None,
+    classes=None,
+    shuffle=None,
+    problem=None,
+    dataset_params=None,
 ):
     """Supply data generator for specified dataset, as these datasets get reused
     for multiple purposes in our different example applications, called as a
@@ -409,12 +477,28 @@ def get_data_generator(
     target_size: 2d tuple of image height/width,
         currently only relevant to "cats" and "catsdogs" datasets,
         typically set to model_arch_params["image_shape"][:2].
-    class_mode: None for unsup or string "input" for supervised learning (via
-        image subdirs like "cats" and "dogs" within "train" or "val" dirs)
+    class_mode: None for unsup (generator yields batches of x only), or
+        "categorical" to yield (x, y) pairs for INN-mode training, where y is
+        a one-hot label array: for "gmm" the 4 color labels of GMM_LABEL_MAP,
+        for "catsdogs" the class given by image subdirs (like "cat" and "dog"
+        within "train" or "val" dirs).
+        "invkin" and "glacgrav" always yield (x, y) pairs (y = forward-modelled
+        data), with both standardized by the problem object.
+    pad_to: optional int; zero-pad x vectors to this width (the flow's
+        prod(image_shape)) for the non-image datasets.
+    classes: optional list of image subdir names to use, in label order;
+        defaults to ["cat", "dog"] for "catsdogs" and all subdirs for "cats".
+    shuffle: whether to shuffle image order; default (None) shuffles only when
+        labels are requested (mixed-class batches are needed for training).
+    problem: for "invkin"/"glacgrav", a forward_models problem object to draw
+        (x, y) pairs from; built from dataset_params if not supplied.
+    dataset_params: optional dict of keyword args for the forward_models
+        problem class when problem is None, or {"label_map": [...]} for "gmm".
     Returns:
     --------
     data generator object for specified dataset
     """
+    dataset_params = dict(dataset_params or {})
 
     n_means = 8
     radius = 14
@@ -461,11 +545,18 @@ def get_data_generator(
             gmm.precisions_cholesky_ = np.linalg.cholesky(
                 np.linalg.inv(gmm.covariances_)
             )
+            label_map = np.asarray(dataset_params.get("label_map", GMM_LABEL_MAP))
+            num_labels = int(label_map.max()) + 1
             while True:
                 X, y = gmm.sample(batch_size)
                 X = X / 10  # scaling to std~1.0 by previous analysis of Ardizzone example
-                # yield X.astype(np.float32), np.zeros(batch_size).astype(np.float32)
-                yield X.astype(np.float32)
+                X = pad_to_dim(X.astype(np.float32), pad_to)
+                if class_mode == "categorical":
+                    onehot = np.zeros((batch_size, num_labels), dtype=np.float32)
+                    onehot[np.arange(batch_size), label_map[y]] = 1.0
+                    yield X, onehot
+                else:
+                    yield X
 
     elif dataset.lower() == "cats" or dataset.lower() == "catsdogs":
 
@@ -487,17 +578,36 @@ def get_data_generator(
                 width_shift_range=0.0,  # 0.1,  # still debugging this feature for S3ImageDG
                 height_shift_range=0.0,  # 0.1,  # still debugging this feature for S3ImageDG
             )
+            use_classes = classes
+            if use_classes is None and dataset.lower() == "catsdogs":
+                use_classes = ["cat", "dog"]
+            # Unlabeled runs keep fixed order (True possibly helpful for
+            # training but pain for debug/analysis); labeled runs must shuffle
+            # so that each batch mixes the classes.
+            use_shuffle = (class_mode is not None) if shuffle is None else shuffle
             output = datagen.flow_from_directory(
                 images_path,
                 target_size=target_size,  # images get resized to this size
                 batch_size=batch_size,
-                class_mode=None,
-                shuffle=False,  # True possibly helpful for training but pain for debug/analysis
+                class_mode=class_mode,
+                classes=use_classes,
+                shuffle=use_shuffle,
             )
             return dequantize_generator(output)
 
     elif dataset.lower() == "invkin" or dataset.lower() == "glacgrav":
-        raise ValueError("These will get implemented in future, but are not yet...")
+
+        def _create_generator():
+            prob = problem
+            if prob is None:
+                import forward_models
+                if dataset.lower() == "invkin":
+                    prob = forward_models.InvKinProblem(**dataset_params)
+                else:
+                    prob = forward_models.GlacGravProblem(**dataset_params)
+            while True:
+                X, Y = prob.sample_training_batch(batch_size)
+                yield pad_to_dim(X, pad_to), Y
 
     else:
         raise ValueError(f"Unrecognized dataset label '{dataset}'.")

@@ -80,7 +80,7 @@ endif
 ifndef MLFLOW_TRACKING_URI
 	$(error MLFLOW_TRACKING_URI is not set. You must export it before running sm-submit)
 endif
-	@if [ "$(SCRIPT)" != "1" ] && ! echo "$(IMAGES_PATH)" | grep -q "^s3://"; then \
+	@if { [ "$(SCRIPT)" = "2" ] || [ "$(SCRIPT)" = "3" ]; } && ! echo "$(IMAGES_PATH)" | grep -q "^s3://"; then \
 	  echo "Error: IMAGES_PATH must be an s3:// URI for SCRIPT=$(SCRIPT) SageMaker runs with images" >&2; exit 1; fi
 	@if [ -n "$(WEIGHTS_PATH)" ] && ! echo "$(WEIGHTS_PATH)" | grep -q "^s3://"; then \
 	  echo "Error: WEIGHTS_PATH must be an s3:// URI if set, got: '$(WEIGHTS_PATH)'" >&2; exit 1; fi

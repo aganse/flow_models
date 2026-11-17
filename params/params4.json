@@ -1,0 +1,58 @@
+{
+  "run_params": {
+    "output_dir": "output",
+    "model_dir": "model/flowmodels4",
+    "dataset": "gmm",
+    "num_gen_sims": 1000,
+    "do_train": true,
+    "num_eval_pts": 4000,
+    "latent_grid_extent": 3.0,
+    "latent_grid_size": 120
+  },
+  "training_params": {
+    "num_epochs": 50,
+    "batch_size": 256,
+    "reg_level": 1e-05,
+    "learning_rate": [
+      0.001,
+      450,
+      0.9
+    ],
+    "early_stopping_patience": 15,
+    "num_data_input": 100000,
+    "augmentation_factor": 1,
+    "grad_norm_thresh": 25,
+    "log_scale_clip": 2,
+    "jit_compile": true,
+    "tracking_tool": "mlflow",
+    "tracking_port": 5000,
+    "tracking_expt_name": "flowmodels4",
+    "save_model_weights": false,
+    "checkpoint_every_n_epochs": 5
+  },
+  "model_arch_params": {
+    "image_shape": [
+      16
+    ],
+    "bijector": "realnvp-based",
+    "realnvp_flow_steps": 8,
+    "realnvp_hidden_layers": [
+      256,
+      256
+    ],
+    "x_dim": 2,
+    "y_dim": 4,
+    "z_dim": 2,
+    "lambda_y": 10.0,
+    "lambda_z": 300.0,
+    "lambda_x": 400.0,
+    "lambda_pad": 10.0,
+    "lambda_nll": 0.0,
+    "pad_noise_scale": 0.05,
+    "mmd_bandwidths": [
+      0.2,
+      1.0,
+      3.0
+    ]
+  }
+}

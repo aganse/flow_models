@@ -1,0 +1,64 @@
+{
+  "run_params": {
+    "output_dir": "output",
+    "model_dir": "model/flowmodels3/catsdogs_128x128",
+    "dataset": "catsdogs",
+    "num_gen_sims": 10,
+    "img2lat_chunk_size": 32,
+    "do_train": true,
+    "do_imgs_and_points": true,
+    "classes": [
+      "cat",
+      "dog"
+    ],
+    "num_eval_images": 1000,
+    "sample_temperature": 0.7,
+    "do_class_swap": true,
+    "num_swap_images": 6
+  },
+  "training_params": {
+    "num_epochs": 150,
+    "batch_size": 64,
+    "reg_level": 1e-05,
+    "learning_rate": [
+      4e-05,
+      13770,
+      0.85
+    ],
+    "early_stopping_patience": 40,
+    "num_data_input": 9800,
+    "augmentation_factor": 3,
+    "grad_norm_thresh": 75,
+    "log_scale_clip": 4,
+    "jit_compile": true,
+    "tracking_tool": "mlflow",
+    "tracking_port": 5000,
+    "tracking_expt_name": "flowmodels3",
+    "save_model_weights": true,
+    "checkpoint_every_n_epochs": 5
+  },
+  "model_arch_params": {
+    "image_shape": [
+      128,
+      128,
+      3
+    ],
+    "bijector": "glow",
+    "realnvp_flow_steps": 6,
+    "realnvp_hidden_layers": [
+      512,
+      512
+    ],
+    "realnvp_permutation": "alternating",
+    "glow_num_blocks": 3,
+    "glow_steps_per_block": 6,
+    "glow_num_hidden": 128,
+    "y_dim": 2,
+    "lambda_nll": 49152.0,
+    "y_sigma": 0.05,
+    "lambda_y": 1000.0,
+    "lambda_z": 0.0,
+    "lambda_x": 0.0,
+    "lambda_pad": 0.0
+  }
+}

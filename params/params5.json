@@ -1,0 +1,80 @@
+{
+  "run_params": {
+    "output_dir": "output",
+    "model_dir": "model/flowmodels5",
+    "dataset": "invkin",
+    "num_gen_sims": 2000,
+    "do_train": true,
+    "y_targets": [
+      [
+        0.0,
+        1.5
+      ],
+      [
+        0.5,
+        1.6
+      ]
+    ],
+    "ik_sigmas": [
+      0.25,
+      0.5,
+      0.5,
+      0.5
+    ],
+    "ik_lengths": [
+      0.5,
+      0.5,
+      1.0
+    ],
+    "do_abc_reference": true,
+    "abc_num_prior": 2000000,
+    "num_test_cases": 300,
+    "num_test_post": 200
+  },
+  "training_params": {
+    "num_epochs": 50,
+    "batch_size": 512,
+    "reg_level": 1e-05,
+    "learning_rate": [
+      0.001,
+      450,
+      0.9
+    ],
+    "early_stopping_patience": 15,
+    "num_data_input": 200000,
+    "augmentation_factor": 1,
+    "grad_norm_thresh": 25,
+    "log_scale_clip": 2,
+    "jit_compile": true,
+    "tracking_tool": "mlflow",
+    "tracking_port": 5000,
+    "tracking_expt_name": "flowmodels5",
+    "save_model_weights": false,
+    "checkpoint_every_n_epochs": 5
+  },
+  "model_arch_params": {
+    "image_shape": [
+      4
+    ],
+    "bijector": "realnvp-based",
+    "realnvp_flow_steps": 12,
+    "realnvp_hidden_layers": [
+      256,
+      256,
+      256
+    ],
+    "x_dim": 4,
+    "y_dim": 2,
+    "z_dim": 2,
+    "lambda_y": 10.0,
+    "lambda_z": 300.0,
+    "lambda_x": 400.0,
+    "lambda_pad": 0.0,
+    "lambda_nll": 0.0,
+    "mmd_bandwidths": [
+      0.3,
+      1.2,
+      3.0
+    ]
+  }
+}
